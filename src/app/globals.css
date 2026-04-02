@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+:root {
+  --background-primary: #1a1400;
+  --background-subtle: #201a07;
+  --background-card: #251f0b;
+  --border-default: #302a17;
+  --text-primary: #f2eee1;
+  --text-secondary: #b1ad9d;
+  --text-muted: #868171;
+  --text-faint: #9c9787;
+  --text-subtle: #5b5544;
+  --text-dim: #706b5a;
+  --accent-primary: #d4ff28;
+  --accent-secondary: #ff2df4;
+  --accent-tertiary: #2bfae9;
+  --button-primary-bg: #d4ff28;
+  --button-primary-text: #1a1400;
+  --parchment: #f2eee1;
+  --parchment-20: #45402d;
+  --status-active-bg: #3f4308;
+  --status-active-border: #525b0c;
+  --status-active-text: #d4ff28;
+  --status-pending-bg: #1d422f;
+  --status-pending-border: #1f5946;
+  --status-pending-text: #2bfae9;
+  --status-queued-bg: #302a16;
+  --status-queued-border: #3e3621;
+  --status-queued-text: #868170;
+  --status-executed-bg: #0c2d4a;
+  --status-executed-border: #134a7a;
+  --status-executed-text: #5cb8ff;
+  --status-rejected-bg: #481931;
+  --status-rejected-border: #5f1c49;
+  --status-rejected-text: #ff2df4;
+  --status-expired-bg: #302a16;
+  --status-expired-border: #3a3522;
+  --status-expired-text: #868170;
+}
+
+@theme inline {
+  --color-bg-primary: var(--background-primary);
+  --color-bg-subtle: var(--background-subtle);
+  --color-border: var(--border-default);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-accent: var(--accent-primary);
+  --color-accent-pink: var(--accent-secondary);
+  --color-accent-teal: var(--accent-tertiary);
+  --color-parchment: var(--parchment);
+  --color-parchment-20: var(--parchment-20);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-lora);
+}
+
+body {
+  background: var(--background-primary);
+  color: var(--text-primary);
+}
+
+input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.expand-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 200ms ease-out;
+}
+.expand-grid[data-expanded="true"] {
+  grid-template-rows: 1fr;
+}
+.expand-grid > .expand-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { scrollbar-width: none; -ms-overflow-style: none; }

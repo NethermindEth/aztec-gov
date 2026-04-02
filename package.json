@@ -1,0 +1,38 @@
+{
+  "name": "govt-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "get-l1-addresses": "npx tsx scripts/get-l1-addresses.ts",
+    "seed-governance": "npx tsx scripts/seed-governance.ts",
+    "setup": "./scripts/setup.sh",
+    "storybook": "storybook dev -p 6006"
+  },
+  "dependencies": {
+    "@rainbow-me/rainbowkit": "^2.2.10",
+    "@tanstack/react-query": "^5.90.21",
+    "next": "16.1.7",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "viem": "^2.46.3",
+    "wagmi": "^2.9.0"
+  },
+  "devDependencies": {
+    "@storybook/nextjs-vite": "^10.2.15",
+    "@storybook/react": "^10.2.15",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "storybook": "^10.2.15",
+    "tailwindcss": "^4",
+    "typescript": "5.9.3",
+    "vite": "^7.3.1"
+  }
+}
