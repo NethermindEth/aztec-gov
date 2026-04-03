@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { usePublicClient } from "wagmi";
+import { parseAbiItem } from "viem";
 import { GovernanceAbi, governanceAddress } from "@/lib/contracts";
 import type { Address } from "viem";
 import { REFETCH_INTERVAL } from "@/lib/constants";
@@ -14,6 +15,13 @@ export interface WithdrawalInfo {
   claimed: boolean;
   status: "pending" | "ready";
 }
+
+const CHUNK_SIZE = 50_000n;
+const MAX_BLOCKS_BACK = 200_000n;
+
+const withdrawInitiatedEvent = parseAbiItem(
+  "event WithdrawInitiated(uint256 indexed withdrawalId, address indexed recipient, uint256 amount)"
+);
 
 export function useWithdrawals(address: Address | undefined) {
   const publicClient = usePublicClient();
@@ -31,51 +39,83 @@ export function useWithdrawals(address: Address | undefined) {
     const id = ++fetchIdRef.current;
 
     try {
-      // Read withdrawal count and governance config in parallel
-      const [countResult, configResult] = await publicClient.multicall({
-        contracts: [
-          {
-            address: governanceAddress,
-            abi: GovernanceAbi,
-            functionName: "withdrawalCount" as const,
-          },
-          {
-            address: governanceAddress,
-            abi: GovernanceAbi,
-            functionName: "getConfiguration" as const,
-          },
-        ],
+      // Fetch governance config for withdrawal delay
+      const configResult = await publicClient.readContract({
+        address: governanceAddress,
+        abi: GovernanceAbi,
+        functionName: "getConfiguration",
       });
 
       if (id !== fetchIdRef.current) return;
 
-      // Compute withdrawal delay from config: votingDelay/5 + votingDuration + executionDelay
-      if (configResult.status === "success" && configResult.result) {
-        const config = configResult.result as unknown as {
-          votingDelay: bigint;
-          votingDuration: bigint;
-          executionDelay: bigint;
-        };
-        const delay =
-          config.votingDelay / 5n +
-          config.votingDuration +
-          config.executionDelay;
-        setWithdrawalDelay(delay);
+      const config = configResult as unknown as {
+        votingDelay: bigint;
+        votingDuration: bigint;
+        executionDelay: bigint;
+      };
+      const delay =
+        config.votingDelay / 5n +
+        config.votingDuration +
+        config.executionDelay;
+      setWithdrawalDelay(delay);
+
+      // Scan WithdrawInitiated events filtered by recipient
+      const blockNumber = await publicClient.getBlockNumber();
+      const endBlock =
+        blockNumber > MAX_BLOCKS_BACK ? blockNumber - MAX_BLOCKS_BACK : 0n;
+
+      const allIds: bigint[] = [];
+
+      for (
+        let toBlock = blockNumber;
+        toBlock >= endBlock;
+        toBlock -= CHUNK_SIZE
+      ) {
+        if (id !== fetchIdRef.current) return;
+
+        const fromBlock =
+          toBlock - CHUNK_SIZE + 1n < endBlock
+            ? endBlock
+            : toBlock - CHUNK_SIZE + 1n;
+
+        try {
+          const logs = await publicClient.getLogs({
+            address: governanceAddress,
+            event: withdrawInitiatedEvent,
+            args: { recipient: address },
+            fromBlock,
+            toBlock,
+          });
+
+          for (const log of logs) {
+            if (log.args.withdrawalId != null) {
+              allIds.push(log.args.withdrawalId);
+            }
+          }
+        } catch (chunkError) {
+          console.error(
+            `Error fetching withdrawal events chunk ${fromBlock}-${toBlock}:`,
+            chunkError
+          );
+        }
       }
 
-      const total = Number(
-        countResult.status === "success" ? countResult.result : 0n
-      );
-      if (total === 0) {
+      if (id !== fetchIdRef.current) return;
+
+      if (allIds.length === 0) {
         setWithdrawals([]);
         setIsLoading(false);
         return;
       }
 
-      // Multicall getWithdrawal for all IDs
-      const ids = Array.from({ length: total }, (_, i) => BigInt(i));
+      // Deduplicate
+      const uniqueIds = [
+        ...new Set(allIds.map((i) => i.toString())),
+      ].map((i) => BigInt(i));
+
+      // Multicall getWithdrawal for the user's withdrawal IDs only
       const results = await publicClient.multicall({
-        contracts: ids.map((wId) => ({
+        contracts: uniqueIds.map((wId) => ({
           address: governanceAddress,
           abi: GovernanceAbi,
           functionName: "getWithdrawal" as const,
@@ -86,7 +126,6 @@ export function useWithdrawals(address: Address | undefined) {
       if (id !== fetchIdRef.current) return;
 
       const nowSec = BigInt(Math.floor(Date.now() / 1000));
-      const userAddress = address.toLowerCase();
       const infos: WithdrawalInfo[] = [];
 
       for (let i = 0; i < results.length; i++) {
@@ -98,11 +137,9 @@ export function useWithdrawals(address: Address | undefined) {
           recipient: string;
           claimed: boolean;
         };
-        // Only show this user's unclaimed withdrawals
-        if (w.recipient.toLowerCase() !== userAddress) continue;
         if (w.claimed) continue;
         infos.push({
-          id: ids[i],
+          id: uniqueIds[i],
           amount: w.amount,
           unlocksAt: w.unlocksAt,
           recipient: w.recipient,
