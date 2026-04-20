@@ -15,7 +15,7 @@
   "dependencies": {
     "@rainbow-me/rainbowkit": "^2.2.10",
     "@tanstack/react-query": "^5.90.21",
-    "next": "16.1.7",
+    "next": "16.2.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "viem": "^2.46.3",
@@ -33,6 +33,6 @@
     "storybook": "^10.2.15",
     "tailwindcss": "^4",
     "typescript": "5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^7.3.2"
   }
 }
