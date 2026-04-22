@@ -6,6 +6,17 @@ import { useWallet } from "@/hooks/useWallet";
 import { useVotingPower } from "@/hooks/useVotingPower";
 import { useVote, type VoteStep } from "@/hooks/useVote";
 import { formatVotesWithUnit, getExplorerUrl, parseAztAmount, bigintToRaw, formatWithCommas } from "@/lib/format";
+import type { Address } from "viem";
+
+type VoteSource = { kind: "direct" } | { kind: "staker"; address: Address };
+
+function shortenAddress(addr: Address): string {
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
+function sourceKey(source: VoteSource): string {
+  return source.kind === "direct" ? "direct" : `staker:${source.address}`;
+}
 
 interface VoteModalProps {
   isOpen: boolean;
@@ -206,8 +217,29 @@ export function VoteModal({
 
   const [support, setSupport] = useState(initialSupport);
   const [amountInput, setAmountInput] = useState("");
+  const [source, setSource] = useState<VoteSource>({ kind: "direct" });
   const [phase, setPhase] = useState<"voting" | "success">("voting");
   const hasInitialized = useRef(false);
+
+  // Direct power available = governance + GSE (i.e. powerNow on user address + delegated)
+  const directPower = votingPower.governancePower + votingPower.gsePower;
+
+  // Build the list of sources with non-zero power (direct always listed so
+  // the picker stays visible even when all power is zero).
+  const availableSources: { source: VoteSource; power: bigint; label: string }[] = [
+    {
+      source: { kind: "direct" },
+      power: canDeposit ? directPower + votingPower.walletBalance : directPower,
+      label: "Direct Deposit",
+    },
+    ...votingPower.stakerPowers
+      .filter((s) => s.power > 0n)
+      .map((s) => ({
+        source: { kind: "staker" as const, address: s.stakerAddress },
+        power: s.power,
+        label: `Staker ${shortenAddress(s.stakerAddress)}`,
+      })),
+  ];
 
   // Reset state when modal opens
   useEffect(() => {
@@ -219,16 +251,29 @@ export function VoteModal({
     }
   }, [isOpen, initialSupport, reset]);
 
-  // Set default amount once voting power loads (only once per open)
+  // Default to the source with the largest power once voting power loads.
   useEffect(() => {
     if (isOpen && !hasInitialized.current && !votingPower.isLoading) {
-      const available = canDeposit
-        ? votingPower.totalVotingPower + votingPower.walletBalance
-        : votingPower.totalVotingPower;
-      setAmountInput(formatWithCommas(bigintToRaw(available)));
+      const best = [...availableSources].sort((a, b) =>
+        a.power > b.power ? -1 : a.power < b.power ? 1 : 0
+      )[0];
+      const chosen = best ?? { source: { kind: "direct" as const }, power: 0n };
+      setSource(chosen.source);
+      setAmountInput(formatWithCommas(bigintToRaw(chosen.power)));
       hasInitialized.current = true;
     }
-  }, [isOpen, votingPower.isLoading, votingPower.totalVotingPower, votingPower.walletBalance, canDeposit]);
+    // availableSources is derived from votingPower; depending on it directly
+    // would re-initialize on every render. Gate on the stable inputs instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isOpen,
+    votingPower.isLoading,
+    votingPower.governancePower,
+    votingPower.gsePower,
+    votingPower.walletBalance,
+    votingPower.totalStakerPower,
+    canDeposit,
+  ]);
 
   // Transition to success on tx hash
   useEffect(() => {
@@ -255,27 +300,60 @@ export function VoteModal({
   if (!isOpen) return null;
 
   const parsedAmount = parseAztAmount(amountInput);
-  // When canDeposit (Pending), allow wallet balance + staked; otherwise staked only
-  const availablePower = canDeposit
-    ? votingPower.totalVotingPower + votingPower.walletBalance
-    : votingPower.totalVotingPower;
+
+  // Power available for the currently selected source.
+  const selectedSourcePower = (() => {
+    if (source.kind === "staker") {
+      return (
+        votingPower.stakerPowers.find(
+          (s) => s.stakerAddress === source.address
+        )?.power ?? 0n
+      );
+    }
+    return canDeposit ? directPower + votingPower.walletBalance : directPower;
+  })();
+
+  const availablePower = selectedSourcePower;
   const isValidAmount =
     parsedAmount !== null && parsedAmount <= availablePower;
 
-  // Derive deposit needs early for UI
+  // Deposit path only applies to direct voting during Pending.
   const depositNeeded =
-    parsedAmount !== null && parsedAmount > votingPower.totalVotingPower
-      ? parsedAmount - votingPower.totalVotingPower
+    source.kind === "direct" &&
+    parsedAmount !== null &&
+    parsedAmount > directPower
+      ? parsedAmount - directPower
       : 0n;
-  const needsDeposit = canDeposit && depositNeeded > 0n;
+  const needsDeposit = canDeposit && source.kind === "direct" && depositNeeded > 0n;
 
   const handleMax = () => {
     setAmountInput(formatWithCommas(bigintToRaw(availablePower)));
   };
 
+  const handleSourceChange = (next: VoteSource) => {
+    setSource(next);
+    const nextPower =
+      next.kind === "staker"
+        ? votingPower.stakerPowers.find(
+            (s) => s.stakerAddress === next.address
+          )?.power ?? 0n
+        : canDeposit
+          ? directPower + votingPower.walletBalance
+          : directPower;
+    setAmountInput(formatWithCommas(bigintToRaw(nextPower)));
+  };
+
   const handleConfirm = () => {
     if (!parsedAmount || !isValidAmount || !address) return;
-    vote(proposalId, parsedAmount, support, needsDeposit ? depositNeeded : 0n, address);
+    const stakerAddress = source.kind === "staker" ? source.address : undefined;
+    vote(
+      proposalId,
+      parsedAmount,
+      support,
+      needsDeposit ? depositNeeded : 0n,
+      address,
+      stakerAddress
+    );
   };
 
   const explorerUrl = chain?.blockExplorers?.default?.url || getExplorerUrl();
@@ -519,49 +597,78 @@ export function VoteModal({
                     Vote Source
                   </label>
                   <div
-                    className="border"
+                    className="border divide-y"
                     style={{
                       borderColor: "var(--border-default)",
+                      ["--tw-divide-opacity" as string]: 1,
                     }}
                   >
-                    <div className="flex items-center justify-between px-4 py-3"
-                      style={canDeposit ? {
-                        borderBottomWidth: "1px",
-                        borderBottomColor: "var(--border-default)",
-                      } : undefined}
-                    >
-                      <span
-                        className="text-xs"
-                        style={{ color: "var(--text-secondary)" }}
-                      >
-                        Staked Power
-                      </span>
-                      <span
-                        className="text-xs font-medium"
-                        style={{ color: "var(--text-primary)" }}
-                      >
-                        {formatVotesWithUnit(
-                          votingPower.governancePower + votingPower.gsePower
-                        )}
-                      </span>
-                    </div>
-                    {canDeposit && (
-                      <div className="flex items-center justify-between px-4 py-3">
-                        <span
-                          className="text-xs"
-                          style={{ color: "var(--text-secondary)" }}
+                    {availableSources.map((entry) => {
+                      const key = sourceKey(entry.source);
+                      const selected = sourceKey(source) === key;
+                      const disabled = entry.power === 0n;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => !disabled && handleSourceChange(entry.source)}
+                          disabled={disabled}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-left cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                          style={{
+                            backgroundColor: selected
+                              ? "rgba(212, 255, 40, 0.05)"
+                              : "transparent",
+                            borderTop: "1px solid var(--border-default)",
+                          }}
                         >
-                          Wallet Balance
-                        </span>
-                        <span
-                          className="text-xs font-medium"
-                          style={{ color: "var(--text-primary)" }}
-                        >
-                          {formatVotesWithUnit(votingPower.walletBalance)}
-                        </span>
-                      </div>
-                    )}
+                          <div
+                            className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
+                            style={{
+                              borderColor: selected
+                                ? "var(--accent-primary)"
+                                : "var(--text-subtle)",
+                            }}
+                          >
+                            {selected && (
+                              <div
+                                className="w-2 h-2 rounded-full"
+                                style={{ backgroundColor: "var(--accent-primary)" }}
+                              />
+                            )}
+                          </div>
+                          <span
+                            className="text-xs flex-1"
+                            style={{ color: "var(--text-secondary)" }}
+                          >
+                            {entry.label}
+                            {entry.source.kind === "direct" && canDeposit && (
+                              <span
+                                className="ml-2 text-[10px]"
+                                style={{ color: "var(--text-muted)" }}
+                              >
+                                (incl. wallet)
+                              </span>
+                            )}
+                          </span>
+                          <span
+                            className="text-xs font-medium"
+                            style={{ color: "var(--text-primary)" }}
+                          >
+                            {formatVotesWithUnit(entry.power)}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
+                  {votingPower.indexerError && (
+                    <p
+                      className="text-[10px] mt-2"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      Couldn&apos;t load staker positions — only direct deposit
+                      voting is available.
+                    </p>
+                  )}
                 </div>
 
                 {/* Amount */}
