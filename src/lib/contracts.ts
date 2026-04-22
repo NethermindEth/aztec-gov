@@ -299,6 +299,20 @@ export const PayloadAbi = [
   },
 ] as const;
 
+export const StakerAbi = [
+  {
+    type: "function",
+    name: "voteInGovernance",
+    inputs: [
+      { name: "_proposalId", type: "uint256" },
+      { name: "_amount", type: "uint256" },
+      { name: "_support", type: "bool" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+] as const;
+
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 const CHAINS: Record<number, Chain> = {
