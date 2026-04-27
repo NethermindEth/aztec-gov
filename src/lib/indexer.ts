@@ -15,7 +15,7 @@ export interface ATPPosition {
 }
 
 export class IndexerError extends Error {
-  constructor(message: string, public readonly cause?: unknown) {
+  constructor(message: string) {
     super(message);
     this.name = "IndexerError";
   }
@@ -44,7 +44,7 @@ export async function fetchBeneficiaryHoldings(
     response = await fetch(url, { signal });
   } catch (err) {
     if ((err as Error)?.name === "AbortError") throw err;
-    throw new IndexerError(`Failed to reach staking indexer at ${url}`, err);
+    throw new IndexerError(`Failed to reach staking indexer at ${url}`);
   }
 
   if (!response.ok) {
@@ -56,8 +56,8 @@ export async function fetchBeneficiaryHoldings(
   let payload: { data?: ATPPosition[] };
   try {
     payload = (await response.json()) as { data?: ATPPosition[] };
-  } catch (err) {
-    throw new IndexerError("Staking indexer returned invalid JSON", err);
+  } catch {
+    throw new IndexerError("Staking indexer returned invalid JSON");
   }
 
   return payload.data ?? [];

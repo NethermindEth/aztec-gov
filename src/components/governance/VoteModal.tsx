@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useReducer } from "react";
 import { createPortal } from "react-dom";
 import { useWallet } from "@/hooks/useWallet";
 import { useVotingPower } from "@/hooks/useVotingPower";
 import { useVote, type VoteStep } from "@/hooks/useVote";
 import { formatVotesWithUnit, getExplorerUrl, parseAztAmount, bigintToRaw, formatWithCommas } from "@/lib/format";
-import type { Address } from "viem";
+import type { Address, Hex } from "viem";
 
 type VoteSource = { kind: "direct" } | { kind: "staker"; address: Address };
 
@@ -16,6 +16,90 @@ function shortenAddress(addr: Address): string {
 
 function sourceKey(source: VoteSource): string {
   return source.kind === "direct" ? "direct" : `staker:${source.address}`;
+}
+
+// ─── Modal state machine ───────────────────────────────────────────────────
+// Phases:
+//   editing    — user can change direction/source/amount; submit button armed.
+//   submitting — vote() is in flight; useVote drives the sub-step.
+//   success    — vote tx submitted; show success screen.
+// All transitions go through the reducer — no ad-hoc setState from effects.
+
+type ModalPhase =
+  | { kind: "editing" }
+  | { kind: "submitting"; step: VoteStep }
+  | { kind: "success"; txHash: Hex };
+
+interface ModalState {
+  phase: ModalPhase;
+  support: boolean;
+  source: VoteSource;
+  amountInput: string;
+  initialized: boolean;
+  error?: string;
+}
+
+type ModalAction =
+  | { type: "RESET"; initialSupport: boolean }
+  | { type: "INITIALIZE"; source: VoteSource; amount: string }
+  | { type: "SET_SUPPORT"; support: boolean }
+  | { type: "SELECT_SOURCE"; source: VoteSource; amount: string }
+  | { type: "SET_AMOUNT"; amount: string }
+  | { type: "SUBMIT_STARTED" }
+  | { type: "TX_STEP"; step: VoteStep }
+  | { type: "TX_SUCCESS"; txHash: Hex }
+  | { type: "TX_FAILED"; message: string }
+  | { type: "CANCEL_SUBMIT" };
+
+function makeInitialState(initialSupport: boolean): ModalState {
+  return {
+    phase: { kind: "editing" },
+    support: initialSupport,
+    source: { kind: "direct" },
+    amountInput: "",
+    initialized: false,
+  };
+}
+
+function reducer(state: ModalState, action: ModalAction): ModalState {
+  switch (action.type) {
+    case "RESET":
+      return makeInitialState(action.initialSupport);
+    case "INITIALIZE":
+      if (state.initialized) return state;
+      return {
+        ...state,
+        initialized: true,
+        source: action.source,
+        amountInput: action.amount,
+      };
+    case "SET_SUPPORT":
+      if (state.phase.kind !== "editing") return state;
+      return { ...state, support: action.support };
+    case "SELECT_SOURCE":
+      if (state.phase.kind !== "editing") return state;
+      return { ...state, source: action.source, amountInput: action.amount };
+    case "SET_AMOUNT":
+      if (state.phase.kind !== "editing") return state;
+      return { ...state, amountInput: action.amount };
+    case "SUBMIT_STARTED":
+      return {
+        ...state,
+        phase: { kind: "submitting", step: "voting" },
+        error: undefined,
+      };
+    case "TX_STEP":
+      if (state.phase.kind !== "submitting") return state;
+      return { ...state, phase: { kind: "submitting", step: action.step } };
+    case "TX_SUCCESS":
+      return { ...state, phase: { kind: "success", txHash: action.txHash } };
+    case "TX_FAILED":
+      return { ...state, phase: { kind: "editing" }, error: action.message };
+    case "CANCEL_SUBMIT":
+      return { ...state, phase: { kind: "editing" } };
+    default:
+      return state;
+  }
 }
 
 interface VoteModalProps {
@@ -212,14 +296,16 @@ export function VoteModal({
 }: VoteModalProps) {
   const { address, chain } = useWallet();
   const votingPower = useVotingPower(address, BigInt(totalSupply));
-  const { vote, step, txHash, isPending, isSuccess, isError, error, reset } =
-    useVote();
+  const { vote, step, txHash, isSuccess, isError, error, reset } = useVote();
 
-  const [support, setSupport] = useState(initialSupport);
-  const [amountInput, setAmountInput] = useState("");
-  const [source, setSource] = useState<VoteSource>({ kind: "direct" });
-  const [phase, setPhase] = useState<"voting" | "success">("voting");
-  const hasInitialized = useRef(false);
+  const [state, dispatch] = useReducer(
+    reducer,
+    initialSupport,
+    makeInitialState
+  );
+  const { support, source, amountInput, phase, error: localError } = state;
+  const isSubmitting = phase.kind === "submitting";
+  const currentStep: VoteStep = isSubmitting ? phase.step : "idle";
 
   // Direct power available = governance + GSE (i.e. powerNow on user address + delegated)
   const directPower = votingPower.governancePower + votingPower.gsePower;
@@ -241,29 +327,27 @@ export function VoteModal({
       })),
   ];
 
-  // Reset state when modal opens
+  // (1) Reset state machine whenever the modal transitions open.
   useEffect(() => {
     if (isOpen) {
-      setSupport(initialSupport);
-      setPhase("voting");
+      dispatch({ type: "RESET", initialSupport });
       reset();
-      hasInitialized.current = false;
     }
   }, [isOpen, initialSupport, reset]);
 
-  // Default to the source with the largest power once voting power loads.
+  // (2) Initialize default source + amount once voting power first loads.
+  //     Uses a stable dependency set; the reducer guards against double-init.
   useEffect(() => {
-    if (isOpen && !hasInitialized.current && !votingPower.isLoading) {
-      const best = [...availableSources].sort((a, b) =>
-        a.power > b.power ? -1 : a.power < b.power ? 1 : 0
-      )[0];
-      const chosen = best ?? { source: { kind: "direct" as const }, power: 0n };
-      setSource(chosen.source);
-      setAmountInput(formatWithCommas(bigintToRaw(chosen.power)));
-      hasInitialized.current = true;
-    }
-    // availableSources is derived from votingPower; depending on it directly
-    // would re-initialize on every render. Gate on the stable inputs instead.
+    if (!isOpen || votingPower.isLoading) return;
+    const best = [...availableSources].sort((a, b) =>
+      a.power > b.power ? -1 : a.power < b.power ? 1 : 0
+    )[0];
+    const chosen = best ?? { source: { kind: "direct" as const }, power: 0n };
+    dispatch({
+      type: "INITIALIZE",
+      source: chosen.source,
+      amount: formatWithCommas(bigintToRaw(chosen.power)),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     isOpen,
@@ -275,13 +359,22 @@ export function VoteModal({
     canDeposit,
   ]);
 
-  // Transition to success on tx hash
+  // (3) Sync the useVote tx-lifecycle state into our modal state machine.
+  //     Only fires dispatches on useVote transitions — no state duplication.
   useEffect(() => {
+    if (step === "idle") return;
     if (isSuccess && txHash) {
+      dispatch({ type: "TX_SUCCESS", txHash });
       onVoteSuccess?.();
-      setPhase("success");
+    } else if (isError) {
+      dispatch({
+        type: "TX_FAILED",
+        message: error?.message || "Transaction failed",
+      });
+    } else {
+      dispatch({ type: "TX_STEP", step });
     }
-  }, [isSuccess, txHash, onVoteSuccess]);
+  }, [step, isSuccess, isError, txHash, error, onVoteSuccess]);
 
   const handleClose = useCallback(() => {
     onClose();
@@ -327,11 +420,13 @@ export function VoteModal({
   const needsDeposit = canDeposit && source.kind === "direct" && depositNeeded > 0n;
 
   const handleMax = () => {
-    setAmountInput(formatWithCommas(bigintToRaw(availablePower)));
+    dispatch({
+      type: "SET_AMOUNT",
+      amount: formatWithCommas(bigintToRaw(availablePower)),
+    });
   };
 
   const handleSourceChange = (next: VoteSource) => {
-    setSource(next);
     const nextPower =
       next.kind === "staker"
         ? votingPower.stakerPowers.find(
@@ -340,12 +435,22 @@ export function VoteModal({
         : canDeposit
           ? directPower + votingPower.walletBalance
           : directPower;
-    setAmountInput(formatWithCommas(bigintToRaw(nextPower)));
+    dispatch({
+      type: "SELECT_SOURCE",
+      source: next,
+      amount: formatWithCommas(bigintToRaw(nextPower)),
+    });
+  };
+
+  const handleCancelSubmit = () => {
+    reset();
+    dispatch({ type: "CANCEL_SUBMIT" });
   };
 
   const handleConfirm = () => {
     if (!parsedAmount || !isValidAmount || !address) return;
     const stakerAddress = source.kind === "staker" ? source.address : undefined;
+    dispatch({ type: "SUBMIT_STARTED" });
     vote(
       proposalId,
       parsedAmount,
@@ -381,7 +486,7 @@ export function VoteModal({
           borderColor: "var(--border-default)",
         }}
       >
-        {phase === "voting" ? (
+        {phase.kind !== "success" ? (
           <div className="p-6">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
@@ -393,8 +498,8 @@ export function VoteModal({
               </h2>
               <button
                 onClick={() => {
-                  if (isPending) {
-                    reset();
+                  if (isSubmitting) {
+                    handleCancelSubmit();
                   }
                   handleClose();
                 }}
@@ -416,12 +521,12 @@ export function VoteModal({
             </div>
 
             {/* Transaction Stepper — shown during multi-tx progress */}
-            {needsDeposit && isPending && (
-              <TransactionStepper step={step} />
+            {needsDeposit && isSubmitting && (
+              <TransactionStepper step={currentStep} />
             )}
 
             {/* Progress phase — compact summary + step message */}
-            {isPending ? (
+            {isSubmitting ? (
               <>
                 {/* Compact vote summary */}
                 <div
@@ -476,15 +581,13 @@ export function VoteModal({
                     className="text-xs"
                     style={{ color: "var(--text-secondary)" }}
                   >
-                    {getStepMessage(step)}
+                    {getStepMessage(currentStep)}
                   </span>
                 </div>
 
                 {/* Cancel button */}
                 <button
-                  onClick={() => {
-                    reset();
-                  }}
+                  onClick={handleCancelSubmit}
                   className="w-full py-3 text-sm font-semibold tracking-wider uppercase border cursor-pointer"
                   style={{
                     borderColor: "var(--border-default)",
@@ -508,7 +611,7 @@ export function VoteModal({
                   <div className="flex gap-3">
                     {/* Vote FOR */}
                     <button
-                      onClick={() => setSupport(true)}
+                      onClick={() => dispatch({ type: "SET_SUPPORT", support: true })}
                       className="flex-1 flex items-center gap-3 p-3 border cursor-pointer"
                       style={{
                         borderColor: support
@@ -548,7 +651,7 @@ export function VoteModal({
 
                     {/* Vote AGAINST */}
                     <button
-                      onClick={() => setSupport(false)}
+                      onClick={() => dispatch({ type: "SET_SUPPORT", support: false })}
                       className="flex-1 flex items-center gap-3 p-3 border cursor-pointer"
                       style={{
                         borderColor: !support
@@ -695,7 +798,7 @@ export function VoteModal({
                     <input
                       type="text"
                       value={amountInput}
-                      onChange={(e) => setAmountInput(e.target.value)}
+                      onChange={(e) => dispatch({ type: "SET_AMOUNT", amount: e.target.value })}
                       className="flex-1 bg-transparent text-sm outline-none"
                       style={{ color: "var(--text-primary)" }}
                       placeholder="0"
@@ -716,12 +819,12 @@ export function VoteModal({
                         Exceeds available voting power
                       </p>
                     )}
-                  {isError && (
+                  {localError && (
                     <p
                       className="text-[10px] mt-1"
                       style={{ color: "var(--accent-secondary)" }}
                     >
-                      {error?.message || "Transaction failed"}
+                      {localError}
                     </p>
                   )}
                 </div>
@@ -821,7 +924,7 @@ export function VoteModal({
                     color: "var(--background-primary)",
                   }}
                 >
-                  {getButtonLabel(step, needsDeposit)}
+                  {getButtonLabel(currentStep, needsDeposit)}
                 </button>
               </>
             )}

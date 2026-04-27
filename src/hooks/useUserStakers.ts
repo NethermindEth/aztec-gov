@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { getAddress, type Address } from "viem";
+import { getAddress, isAddress, type Address } from "viem";
 import {
   fetchBeneficiaryHoldings,
   getIndexerBaseUrl,
@@ -15,13 +15,23 @@ interface UseUserStakersResult {
   error?: Error;
 }
 
-const EMPTY_STAKERS: Address[] = [];
 const EMPTY_HOLDINGS: ATPPosition[] = [];
+
+function parseDevExtraStakers(): Address[] {
+  const raw = process.env.NEXT_PUBLIC_DEV_EXTRA_STAKERS;
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && isAddress(s))
+    .map((s) => getAddress(s));
+}
 
 export function useUserStakers(
   address: Address | undefined
 ): UseUserStakersResult {
   const baseUrl = getIndexerBaseUrl();
+  const extraStakers = parseDevExtraStakers();
   const enabled = !!address && !!baseUrl;
 
   const { data, isFetching, error } = useQuery<{
@@ -46,8 +56,18 @@ export function useUserStakers(
     },
   });
 
+  const discovered = data?.stakers ?? [];
+  const seen = new Set(discovered);
+  const merged = [...discovered];
+  for (const s of extraStakers) {
+    if (!seen.has(s)) {
+      seen.add(s);
+      merged.push(s);
+    }
+  }
+
   return {
-    stakers: data?.stakers ?? EMPTY_STAKERS,
+    stakers: merged,
     holdings: data?.holdings ?? EMPTY_HOLDINGS,
     isLoading: enabled && isFetching,
     error: error ?? undefined,

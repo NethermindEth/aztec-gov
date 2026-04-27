@@ -9,6 +9,8 @@
     "lint": "eslint",
     "get-l1-addresses": "npx tsx scripts/get-l1-addresses.ts",
     "seed-governance": "npx tsx scripts/seed-governance.ts",
+    "seed-staker-voting": "npx tsx scripts/seed-staker-voting.ts",
+    "bootstrap-anvil": "npx tsx scripts/bootstrap-anvil.ts",
     "setup": "./scripts/setup.sh",
     "storybook": "storybook dev -p 6006"
   },
