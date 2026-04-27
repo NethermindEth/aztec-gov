@@ -25,7 +25,20 @@ import {
   parseAbi,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { sepolia } from "viem/chains";
+import { sepolia, mainnet, foundry } from "viem/chains";
+
+function resolveChain() {
+  const id = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "11155111");
+  switch (id) {
+    case 1:
+      return mainnet;
+    case 31337:
+      return foundry;
+    case 11155111:
+    default:
+      return sepolia;
+  }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -75,15 +88,16 @@ const rpcUrl =
   "https://ethereum-sepolia-rpc.publicnode.com";
 
 const account = privateKeyToAccount(PRIVATE_KEY);
+const chain = resolveChain();
 
 const publicClient = createPublicClient({
-  chain: sepolia,
+  chain,
   transport: http(rpcUrl),
 });
 
 const walletClient = createWalletClient({
   account,
-  chain: sepolia,
+  chain,
   transport: http(rpcUrl),
 });
 
