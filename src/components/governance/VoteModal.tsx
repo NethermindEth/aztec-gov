@@ -18,12 +18,10 @@ function sourceKey(source: VoteSource): string {
   return source.kind === "direct" ? "direct" : `staker:${source.address}`;
 }
 
-// ─── Modal state machine ───────────────────────────────────────────────────
 // Phases:
 //   editing    — user can change direction/source/amount; submit button armed.
 //   submitting — vote() is in flight; useVote drives the sub-step.
 //   success    — vote tx submitted; show success screen.
-// All transitions go through the reducer — no ad-hoc setState from effects.
 
 type ModalPhase =
   | { kind: "editing" }
@@ -307,11 +305,9 @@ export function VoteModal({
   const isSubmitting = phase.kind === "submitting";
   const currentStep: VoteStep = isSubmitting ? phase.step : "idle";
 
-  // Direct power available = governance + GSE (i.e. powerNow on user address + delegated)
   const directPower = votingPower.governancePower + votingPower.gsePower;
 
-  // Build the list of sources with non-zero power (direct always listed so
-  // the picker stays visible even when all power is zero).
+  // Direct is always listed so the picker stays visible even when all power is zero.
   const availableSources: { source: VoteSource; power: bigint; label: string }[] = [
     {
       source: { kind: "direct" },
@@ -327,7 +323,6 @@ export function VoteModal({
       })),
   ];
 
-  // (1) Reset state machine whenever the modal transitions open.
   useEffect(() => {
     if (isOpen) {
       dispatch({ type: "RESET", initialSupport });
@@ -335,8 +330,9 @@ export function VoteModal({
     }
   }, [isOpen, initialSupport, reset]);
 
-  // (2) Initialize default source + amount once voting power first loads.
-  //     Uses a stable dependency set; the reducer guards against double-init.
+  // Pick the largest-power source as the default once voting power loads.
+  // Depending on availableSources directly would re-init on every render;
+  // the reducer also guards against double-init.
   useEffect(() => {
     if (!isOpen || votingPower.isLoading) return;
     const best = [...availableSources].sort((a, b) =>
@@ -359,8 +355,7 @@ export function VoteModal({
     canDeposit,
   ]);
 
-  // (3) Sync the useVote tx-lifecycle state into our modal state machine.
-  //     Only fires dispatches on useVote transitions — no state duplication.
+  // Mirror useVote's tx-lifecycle state into the modal's state machine.
   useEffect(() => {
     if (step === "idle") return;
     if (isSuccess && txHash) {
@@ -394,7 +389,6 @@ export function VoteModal({
 
   const parsedAmount = parseAztAmount(amountInput);
 
-  // Power available for the currently selected source.
   const selectedSourcePower = (() => {
     if (source.kind === "staker") {
       return (

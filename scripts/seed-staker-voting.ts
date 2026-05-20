@@ -184,13 +184,14 @@ async function createNewATP(
       args: [beneficiary, allocation, revokableParams],
     });
   } catch (err: unknown) {
-    const msg = (err as Error)?.message || "";
+    const msg = err instanceof Error ? err.message : "";
     if (/OwnableUnauthorizedAccount|Ownable/i.test(msg)) {
       console.error(
         `\ncreateLATP failed — PRIVATE_KEY (${beneficiary}) is not the ATPFactory owner.\n` +
           `Ask the staking-dashboard ops team to create an ATP for this wallet on Sepolia,\n` +
           `then re-run without --create-atp.\n`
       );
+      process.exit(1);
     }
     throw err;
   }
