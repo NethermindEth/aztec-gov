@@ -6,6 +6,7 @@ import { getConnectorClient } from "@wagmi/core";
 import {
   GovernanceAbi,
   ERC20Abi,
+  StakerAbi,
   governanceAddress,
   stakingAssetAddress,
 } from "@/lib/contracts";
@@ -39,10 +40,19 @@ export function useVote() {
       amount: bigint,
       support: boolean,
       depositAmount: bigint,
-      userAddress: Address
+      userAddress: Address,
+      stakerAddress?: Address
     ) => {
       if (!connector || !publicClient) {
         setVoteError(new Error("Wallet not connected"));
+        setStep("error");
+        return;
+      }
+
+      if (stakerAddress && depositAmount > 0n) {
+        setVoteError(
+          new Error("Cannot deposit and vote via a staker in one action")
+        );
         setStep("error");
         return;
       }
@@ -88,15 +98,23 @@ export function useVote() {
           if (abortRef.current) return;
         }
 
-        // Step 3: Vote
+        // Step 3: Vote — via staker or directly against governance
         setStep("voting");
-        const voteTxHash = await walletClient.writeContract({
-          chain,
-          address: governanceAddress,
-          abi: GovernanceAbi,
-          functionName: "vote",
-          args: [BigInt(proposalId), amount, support],
-        });
+        const voteTxHash = stakerAddress
+          ? await walletClient.writeContract({
+              chain,
+              address: stakerAddress,
+              abi: StakerAbi,
+              functionName: "voteInGovernance",
+              args: [BigInt(proposalId), amount, support],
+            })
+          : await walletClient.writeContract({
+              chain,
+              address: governanceAddress,
+              abi: GovernanceAbi,
+              functionName: "vote",
+              args: [BigInt(proposalId), amount, support],
+            });
         if (abortRef.current) return;
 
         setFinalTxHash(voteTxHash);

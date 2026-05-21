@@ -1,8 +1,7 @@
 "use client";
 
-import type { Chain } from "viem";
-import { mainnet, sepolia } from "wagmi/chains";
-import { http } from "viem";
+import { defineChain, http, type Chain } from "viem";
+import { mainnet, sepolia, foundry as foundryBase } from "wagmi/chains";
 import { cookieStorage, createConfig, createStorage } from "wagmi";
 import type { Config } from "wagmi";
 import { connectorsForWallets } from "@rainbow-me/rainbowkit";
@@ -13,6 +12,17 @@ import {
   walletConnectWallet,
 } from "@rainbow-me/rainbowkit/wallets";
 
+const foundry: Chain = defineChain({
+  ...foundryBase,
+  contracts: {
+    ...foundryBase.contracts,
+    multicall3: {
+      address: "0xcA11bde05977b3631167028862bE2a173976CA11",
+      blockCreated: 0,
+    },
+  },
+});
+
 const WALLETCONNECT_PROJECT_ID =
   process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
 
@@ -21,6 +31,8 @@ export function getChains(): readonly [Chain, ...Chain[]] {
   switch (chainId) {
     case 1:
       return [mainnet];
+    case 31337:
+      return [foundry];
     case 11155111:
     default:
       return [sepolia];
@@ -30,6 +42,7 @@ export function getChains(): readonly [Chain, ...Chain[]] {
 const PUBLIC_RPC: Record<number, string> = {
   1: "https://ethereum-rpc.publicnode.com",
   11155111: "https://ethereum-sepolia-rpc.publicnode.com",
+  31337: "http://127.0.0.1:8545",
 };
 
 function buildTransports(chains: readonly Chain[]) {

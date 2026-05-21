@@ -112,8 +112,7 @@ export function truncateUrl(url: string, maxLen = 40): string {
 }
 
 export function truncateAddress(address: string): string {
-  if (!address.startsWith("0x") || address.length <= 13) return address;
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
 export function formatDuration(seconds: bigint | number): string {

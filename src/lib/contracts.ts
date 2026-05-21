@@ -1,5 +1,19 @@
-import { createPublicClient, http, isAddress, type Address, type Chain } from "viem";
-import { mainnet, sepolia } from "viem/chains";
+import { createPublicClient, defineChain, http, isAddress, type Address, type Chain } from "viem";
+import { mainnet, sepolia, foundry as foundryBase } from "viem/chains";
+
+// viem's foundry chain doesn't declare multicall3 — inject the canonical
+// address so publicClient.multicall works against a local anvil where we've
+// seeded the multicall3 contract via anvil_setCode.
+const foundry = defineChain({
+  ...foundryBase,
+  contracts: {
+    ...foundryBase.contracts,
+    multicall3: {
+      address: "0xcA11bde05977b3631167028862bE2a173976CA11",
+      blockCreated: 0,
+    },
+  },
+});
 
 // ─── ABIs ────────────────────────────────────────────────────────────────────
 
@@ -299,11 +313,26 @@ export const PayloadAbi = [
   },
 ] as const;
 
+export const StakerAbi = [
+  {
+    type: "function",
+    name: "voteInGovernance",
+    inputs: [
+      { name: "_proposalId", type: "uint256" },
+      { name: "_amount", type: "uint256" },
+      { name: "_support", type: "bool" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+] as const;
+
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 const CHAINS: Record<number, Chain> = {
   1: mainnet,
   11155111: sepolia,
+  31337: foundry,
 };
 
 const rawChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "11155111");
@@ -318,6 +347,7 @@ const chainId = (() => {
 const PUBLIC_FALLBACK_RPC: Record<number, string> = {
   1: "https://ethereum-rpc.publicnode.com",
   11155111: "https://ethereum-sepolia-rpc.publicnode.com",
+  31337: "http://127.0.0.1:8545",
 };
 
 const rpcUrl =

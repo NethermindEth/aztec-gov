@@ -20,6 +20,7 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
     walletBalance,
     governancePower,
     gsePower,
+    totalStakerPower,
     totalVotingPower,
     supplyPercentage,
     isLoading,
@@ -27,6 +28,7 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
   const { withdrawals, withdrawalDelay } = useWithdrawals(address);
 
   const activeWithdrawals = withdrawals.filter((w) => !w.claimed);
+  const stakedTotal = governancePower + totalStakerPower;
 
   return (
     <div
@@ -80,7 +82,7 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
       {!isLoading && (
         <div className="flex md:hidden items-center gap-4 px-4 pb-3 text-xs" style={{ color: "var(--text-muted)" }}>
           <span>Wallet: {formatVotesWithUnit(walletBalance)}</span>
-          <span>Staked: {formatVotesWithUnit(governancePower)}</span>
+          <span>Staked: {formatVotesWithUnit(stakedTotal)}</span>
         </div>
       )}
 
@@ -96,7 +98,7 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
         />
         <BreakdownCell
           label="Staked Positions"
-          value={formatVotesWithUnit(governancePower)}
+          value={formatVotesWithUnit(stakedTotal)}
           loading={isLoading}
         />
         <BreakdownCell
