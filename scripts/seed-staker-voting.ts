@@ -285,7 +285,7 @@ async function main() {
     const indexerBase = getIndexerBaseUrl();
     if (!indexerBase) {
       console.error(
-        "Error: could not resolve indexer base URL. Set NEXT_PUBLIC_STAKING_INDEXER_URL or NEXT_PUBLIC_CHAIN_ID."
+        "Error: NEXT_PUBLIC_STAKING_INDEXER_URL is not set."
       );
       process.exit(1);
     }

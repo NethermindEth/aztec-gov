@@ -21,16 +21,10 @@ export class IndexerError extends Error {
   }
 }
 
-const DEFAULT_INDEXER_URL_BY_CHAIN: Record<number, string> = {
-  1: "https://dgk9duhuxabbq.cloudfront.net",
-  11155111: "https://d1lzkj24db7400.cloudfront.net",
-};
-
 export function getIndexerBaseUrl(): string | undefined {
-  const override = process.env.NEXT_PUBLIC_STAKING_INDEXER_URL;
-  if (override && override.trim().length > 0) return override.trim().replace(/\/+$/, "");
-  const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "11155111");
-  return DEFAULT_INDEXER_URL_BY_CHAIN[chainId];
+  const url = process.env.NEXT_PUBLIC_STAKING_INDEXER_URL;
+  if (!url || url.trim().length === 0) return undefined;
+  return url.trim().replace(/\/+$/, "");
 }
 
 export async function fetchBeneficiaryHoldings(

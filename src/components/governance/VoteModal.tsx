@@ -5,14 +5,10 @@ import { createPortal } from "react-dom";
 import { useWallet } from "@/hooks/useWallet";
 import { useVotingPower } from "@/hooks/useVotingPower";
 import { useVote, type VoteStep } from "@/hooks/useVote";
-import { formatVotesWithUnit, getExplorerUrl, parseAztAmount, bigintToRaw, formatWithCommas } from "@/lib/format";
+import { formatVotesWithUnit, getExplorerUrl, parseAztAmount, bigintToRaw, formatWithCommas, truncateAddress } from "@/lib/format";
 import type { Address, Hex } from "viem";
 
 type VoteSource = { kind: "direct" } | { kind: "staker"; address: Address };
-
-function shortenAddress(addr: Address): string {
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
 
 function sourceKey(source: VoteSource): string {
   return source.kind === "direct" ? "direct" : `staker:${source.address}`;
@@ -319,7 +315,7 @@ export function VoteModal({
       .map((s) => ({
         source: { kind: "staker" as const, address: s.stakerAddress },
         power: s.power,
-        label: `Staker ${shortenAddress(s.stakerAddress)}`,
+        label: `Staker ${truncateAddress(s.stakerAddress)}`,
       })),
   ];
 
