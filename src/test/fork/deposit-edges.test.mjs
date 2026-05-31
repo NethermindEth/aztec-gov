@@ -64,8 +64,7 @@ function pass(msg) {
 }
 
 // Test 5: Wallet direct path regression
-console.log("
-" + "  Test 5: Wallet (direct) deposit path regression");
+console.log("\n  Test 5: Wallet (direct) deposit path regression");
 
 // Anvil dev account #1, which we have the private key for in MetaMask
 const DEV = getAddress("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
@@ -158,8 +157,7 @@ if (typeof depositTx === "object" && depositTx.error) {
 }
 
 // Test 6: Multi-user surfacing for the Deposit modal
-console.log("
-" + "  Test 6: Multi-user Deposit modal source surfacing");
+console.log("\n  Test 6: Multi-user Deposit modal source surfacing");
 
 for (const [beneficiary, atpAddr] of Object.entries(KNOWN_ATPS)) {
   const atp = getAddress(atpAddr);
@@ -171,8 +169,7 @@ for (const [beneficiary, atpAddr] of Object.entries(KNOWN_ATPS)) {
 pass("Multi-user surfacing: each user's picker options computed from on-chain balances");
 
 // Test 7: Edge cases
-console.log("
-" + "  Test 7: Edge cases the DepositModal must handle");
+console.log("\n  Test 7: Edge cases the DepositModal must handle");
 
 // Case A: amount > balance. UI logic: parsedAmount > selectedPower → button disabled, error msg shown
 const selectedPower = 1000000000000000000n;
@@ -200,5 +197,4 @@ if (!needsApproveWhenLow) fail("needsApprove should be true when allowance < amo
 pass("Edge: needsApprove=true when allowance insufficient");
 
 // Summary
-console.log("
-" + "  ALL EXTENDED TESTS PASSED");
+console.log("\n  ALL EXTENDED TESTS PASSED");

@@ -221,8 +221,7 @@ if (found.amount !== amount) fail("surfaced amount mismatch");
 pass(`Dashboard would surface new withdrawal id=${newId} for user ${USER.slice(0, 10)}…`);
 
 // Test 4: Permissionless finalize from a DIFFERENT account
-console.log("
-" + "  Test 4: Permissionless finalize from a non-owner account");
+console.log("\n  Test 4: Permissionless finalize from a non-owner account");
 
 // Poke unlocksAt to past
 const slotBase = structSlot(newId, WITHDRAWALS_BASE_SLOT);
@@ -267,8 +266,7 @@ if (stillThere) fail(`Dashboard would still show finalized withdrawal id=${newId
 pass(`Dashboard simulation: row id=${newId} correctly removed after finalize`);
 
 // Summary
-console.log("
-" + "  ALL TESTS PASSED . 200% confidence");
+console.log("\n  ALL TESTS PASSED");
 console.log("Verified end-to-end:");
 console.log("  ✓ Read path: indexer → log scan → withdrawal list, correct for 5 real users");
 console.log("  ✓ Write path (initiate): exact dashboard calldata succeeds as the real Staker owner");
