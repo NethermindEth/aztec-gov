@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Address } from "viem";
+import { getAddress, type Address } from "viem";
 import { useWallet } from "@/hooks/useWallet";
 import { useVotingPower } from "@/hooks/useVotingPower";
 import { useWithdrawals, type WithdrawalInfo } from "@/hooks/useWithdrawals";
 import { useUserStakers } from "@/hooks/useUserStakers";
+import { useATPBalances } from "@/hooks/useATPBalances";
 import { useFinalizeWithdraw } from "@/hooks/useFinalizeWithdraw";
 import { formatVotesWithUnit, formatTimeRemaining, sanitizeTransactionError, formatDuration } from "@/lib/format";
 
@@ -34,6 +35,26 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
     const atps = holdings.map((h) => h.address);
     return address ? [address, ...atps] : atps;
   }, [address, holdings]);
+  // Sums vault balance from ATPs where the connected wallet is operator;
+  // gates the Deposit CTA for ATP-only users.
+  const atpAddresses = useMemo(
+    () => holdings.map((h) => getAddress(h.address)),
+    [holdings]
+  );
+  const { balances: atpBalances, operators: atpOperators } =
+    useATPBalances(atpAddresses);
+  const depositableATP = useMemo(() => {
+    if (!address) return 0n;
+    const wallet = getAddress(address);
+    let sum = 0n;
+    for (const atp of atpAddresses) {
+      const op = atpOperators.get(atp);
+      // Unknown operator treated as allow (matches DepositModal behavior).
+      if (op && op !== wallet) continue;
+      sum += atpBalances.get(atp) ?? 0n;
+    }
+    return sum;
+  }, [address, atpAddresses, atpBalances, atpOperators]);
   const { withdrawals, withdrawalDelay, isLoading: withdrawalsLoading } =
     useWithdrawals(recipients);
 
@@ -141,14 +162,15 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
         </div>
       )}
 
-      {/* Deposit CTA when wallet has balance */}
-      {!isLoading && walletBalance > 0n && onDeposit && (
+      {/* Deposit CTA when wallet or a vault has depositable AZT. The modal's
+         picker handles routing between direct and per-Staker paths. */}
+      {!isLoading && (walletBalance > 0n || depositableATP > 0n) && onDeposit && (
         <div
           className="hidden md:flex items-center justify-between mx-6 mb-4 px-4 py-3 border"
           style={{ borderColor: "var(--border-default)" }}
         >
           <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
-            You have {formatVotesWithUnit(walletBalance)} in your wallet available to deposit
+            You have {formatVotesWithUnit(walletBalance + depositableATP)} available to deposit
           </span>
           <button
             onClick={onDeposit}

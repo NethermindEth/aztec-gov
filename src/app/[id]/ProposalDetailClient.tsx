@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import Link from "next/link";
 import { useProposalQuery, useInvalidateProposal } from "@/hooks/useProposalQuery";
+import { useInvalidateUserData } from "@/hooks/useInvalidateUserData";
 import type { ProposalDetailView } from "@/lib/types";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
@@ -27,6 +28,7 @@ interface ProposalDetailClientProps {
 export function ProposalDetailClient({ id, initialData }: ProposalDetailClientProps) {
   const { data: p, isLoading, isError } = useProposalQuery(id, initialData);
   const invalidateProposal = useInvalidateProposal();
+  const invalidateUserData = useInvalidateUserData();
   const [voteModalOpen, setVoteModalOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [initialSupport, setInitialSupport] = useState(true);
@@ -38,11 +40,13 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
 
   const handleVoteSuccess = useCallback(() => {
     invalidateProposal(id);
-  }, [invalidateProposal, id]);
+    invalidateUserData();
+  }, [invalidateProposal, invalidateUserData, id]);
 
   const handleDepositSuccess = useCallback(() => {
     invalidateProposal(id);
-  }, [invalidateProposal, id]);
+    invalidateUserData();
+  }, [invalidateProposal, invalidateUserData, id]);
 
   if (isNaN(id) || id < 0) {
     return (

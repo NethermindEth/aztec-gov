@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import type { Address } from "viem";
 import { useWallet } from "@/hooks/useWallet";
@@ -66,8 +66,7 @@ export function WithdrawModal({
     reset,
   } = useWithdraw();
 
-  // Direct is always listed (disabled when 0) so the picker UI stays stable
-  // across wallets that have only direct, only staker, or both.
+  // Direct is always listed (disabled at 0) so the picker is stable.
   const availableSources = useMemo<
     { source: WithdrawSource; power: bigint; label: string }[]
   >(() => {
@@ -89,22 +88,36 @@ export function WithdrawModal({
 
   const [source, setSource] = useState<WithdrawSource>({ kind: "direct" });
   const [amountInput, setAmountInput] = useState("");
+  // Exact bigint stashed by MAX so display truncation doesn't strand dust.
+  const [maxOverride, setMaxOverride] = useState<bigint | null>(null);
   const [phase, setPhase] = useState<"form" | "success">("form");
+  const hasInitialized = useRef(false);
 
-  // Default to the largest-power source so an ATP-only user lands on their
-  // Staker without manual selection.
-  // We depend on the scalar power fields, not `availableSources` (a fresh
-  // array each render) or `reset` (stable from useCallback); listing them
-  // would make this effect re-run every paint or pull stale closures.
+  // Reset only on open. A successful withdraw zeroes staker power, and if
+  // this fired on that change too the success view would flash back to form.
   useEffect(() => {
-    if (!isOpen || votingPower.isLoading) return;
-    setPhase("form");
-    setAmountInput("");
-    reset();
+    if (isOpen) {
+      setPhase("form");
+      setAmountInput("");
+      setMaxOverride(null);
+      reset();
+      hasInitialized.current = false;
+    }
+  }, [isOpen, reset]);
+
+  // Auto-pick the largest-power source once per open. Gated by hasInitialized
+  // so the post-withdraw power refresh doesn't reset the modal mid-flow.
+  useEffect(() => {
+    if (!isOpen || votingPower.isLoading || hasInitialized.current) return;
     const best = [...availableSources].sort((a, b) =>
       a.power > b.power ? -1 : a.power < b.power ? 1 : 0
     )[0];
-    if (best) setSource(best.source);
+    if (best) {
+      setSource(best.source);
+      setMaxOverride(best.power);
+      setAmountInput(formatWithCommas(bigintToRaw(best.power)));
+      hasInitialized.current = true;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, votingPower.isLoading, votingPower.governancePower, votingPower.totalStakerPower]);
 
@@ -142,24 +155,35 @@ export function WithdrawModal({
   })();
 
   const parsedAmount = parseAztAmount(amountInput);
+  // Prefer the MAX-captured bigint so display truncation doesn't lose wei.
+  const effectiveAmount = maxOverride ?? parsedAmount;
   const isValidAmount =
-    parsedAmount !== null && parsedAmount > 0n && parsedAmount <= selectedPower;
+    effectiveAmount !== null &&
+    effectiveAmount > 0n &&
+    effectiveAmount <= selectedPower;
 
   const handleMax = () => {
     setAmountInput(formatWithCommas(bigintToRaw(selectedPower)));
+    setMaxOverride(selectedPower);
+  };
+
+  const handleAmountInputChange = (value: string) => {
+    setAmountInput(value);
+    setMaxOverride(null);
   };
 
   const handleSourceChange = (next: WithdrawSource) => {
     setSource(next);
-    // Reset so a value valid for the previous source isn't silently invalid here.
+    // Clears any value that was valid against the old source but not the new.
     setAmountInput("");
+    setMaxOverride(null);
   };
 
   const handleConfirm = () => {
-    if (!parsedAmount || !isValidAmount || !address) return;
+    if (!effectiveAmount || !isValidAmount || !address) return;
     const stakerAddress =
       source.kind === "staker" ? source.address : undefined;
-    withdraw(parsedAmount, address, stakerAddress);
+    withdraw(effectiveAmount, address, stakerAddress);
   };
 
   const explorerUrl =
@@ -179,6 +203,9 @@ export function WithdrawModal({
       }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Withdraw from Position"
         className="w-[calc(100%-2rem)] md:w-[480px] max-h-[90vh] overflow-y-auto border rounded-xl"
         style={{
           backgroundColor: "var(--background-card)",
@@ -391,7 +418,7 @@ export function WithdrawModal({
                   <input
                     type="text"
                     value={amountInput}
-                    onChange={(e) => setAmountInput(e.target.value)}
+                    onChange={(e) => handleAmountInputChange(e.target.value)}
                     className="flex-1 bg-transparent text-sm outline-none"
                     style={{ color: "var(--text-primary)" }}
                     placeholder="Enter amount"

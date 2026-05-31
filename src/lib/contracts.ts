@@ -292,6 +292,16 @@ export const ERC20Abi = [
   },
   {
     type: "function",
+    name: "allowance",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "mint",
     inputs: [
       { name: "_to", type: "address" },
@@ -338,8 +348,34 @@ export const StakerAbi = [
     type: "function",
     name: "initiateWithdrawFromGovernance",
     inputs: [{ name: "_amount", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "depositIntoGovernance",
+    inputs: [{ name: "_amount", type: "uint256" }],
     outputs: [],
     stateMutability: "nonpayable",
+  },
+] as const;
+
+// ATP (Aztec Token Vault). The asset is implicit on the contract, so
+// approveStaker takes only an amount.
+export const ATPAbi = [
+  {
+    type: "function",
+    name: "approveStaker",
+    inputs: [{ name: "_amount", type: "uint256" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "getOperator",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
   },
 ] as const;
 
