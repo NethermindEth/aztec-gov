@@ -15,6 +15,12 @@
 
 # testing
 /coverage
+/test-results
+/playwright-report
+/.playwright
+
+# local agent / IDE state
+/.claude
 
 # next.js
 /.next/

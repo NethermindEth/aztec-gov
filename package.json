@@ -12,7 +12,11 @@
     "seed-staker-voting": "npx tsx scripts/seed-staker-voting.ts",
     "bootstrap-anvil": "npx tsx scripts/bootstrap-anvil.ts",
     "setup": "./scripts/setup.sh",
-    "storybook": "storybook dev -p 6006"
+    "storybook": "storybook dev -p 6006",
+    "test:fork": "for f in src/test/fork/*.test.mjs; do echo \"\\n\u25b8 $f\"; node \"$f\" || exit 1; done",
+    "test:fork:deposit": "node src/test/fork/deposit.test.mjs",
+    "test:fork:withdraw": "node src/test/fork/withdraw.test.mjs",
+    "test:fork:max-dust": "node src/test/fork/max-dust.test.mjs"
   },
   "dependencies": {
     "@rainbow-me/rainbowkit": "^2.2.10",
