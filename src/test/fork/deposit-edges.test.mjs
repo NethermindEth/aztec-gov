@@ -66,6 +66,9 @@ function pass(msg) {
 // Test 5: Wallet direct path regression
 console.log("\n  Test 5: Wallet (direct) deposit path regression");
 
+const snapId = await rpc("evm_snapshot");
+try {
+
 // Anvil dev account #1, which we have the private key for in MetaMask
 const DEV = getAddress("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
 await rpc("anvil_setBalance", [DEV, toHex(10n * 10n ** 18n)]);
@@ -154,6 +157,11 @@ if (typeof depositTx === "object" && depositTx.error) {
   const powerAfter = await c.readContract({ address: GOV, abi: [powerNowAbi], functionName: "powerNow", args: [DEV] });
   if (powerAfter - powerBefore !== depositAmount) fail(`power delta wrong`);
   pass(`Wallet path: deposit succeeded, DEV power = ${powerAfter}`);
+}
+
+} finally {
+  await rpc("evm_revert", [snapId]);
+  pass(`State reverted via evm_revert`);
 }
 
 // Test 6: Multi-user surfacing for the Deposit modal

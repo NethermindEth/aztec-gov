@@ -59,6 +59,9 @@ function pass(msg) {
 await rpc("anvil_setBalance", [USER, toHex(10n * 10n ** 18n)]);
 await rpc("anvil_impersonateAccount", [USER]);
 
+const snapId = await rpc("evm_snapshot");
+try {
+
 // Test 1: Calldata identity
 console.log("\n  Test 1: Calldata identity for both contract calls");
 
@@ -155,6 +158,11 @@ const tx3 = await rpc("eth_sendTransaction", [
 const rcpt3 = await c.waitForTransactionReceipt({ hash: tx3 });
 if (rcpt3.status !== "success") fail("deposit (skip-approve path) reverted");
 pass(`Single-tx deposit succeeded (allowance pre-existed)`);
+
+} finally {
+  await rpc("evm_revert", [snapId]);
+  pass(`State reverted via evm_revert`);
+}
 
 // Summary
 console.log("\n  ALL TESTS PASSED, PR B is contract-correct");
