@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useAccount, useConfig, usePublicClient } from "wagmi";
 import { getConnectorClient } from "@wagmi/core";
-import { GovernanceAbi, governanceAddress } from "@/lib/contracts";
+import { GovernanceAbi, StakerAbi, governanceAddress } from "@/lib/contracts";
 import { type Address, walletActions, parseEventLogs } from "viem";
 import { TX_RECEIPT_TIMEOUT } from "@/lib/constants";
 import { sanitizeTransactionError } from "@/lib/format";
@@ -15,6 +15,14 @@ export type WithdrawStep =
   | "success"
   | "error";
 
+/**
+ * Initiate a governance withdrawal.
+ *
+ * When `stakerAddress` is omitted, calls `Governance.initiateWithdraw(to, amount)`
+ * directly. When provided, calls `Staker.initiateWithdrawFromGovernance(amount)`
+ * — the Staker then calls Governance with the ATP as recipient. Either path
+ * emits the same `WithdrawInitiated` event so parsing is shared.
+ */
 export function useWithdraw() {
   const { connector } = useAccount();
   const config = useConfig();
@@ -27,7 +35,11 @@ export function useWithdraw() {
   const abortRef = useRef(false);
 
   const withdraw = useCallback(
-    async (amount: bigint, userAddress: Address) => {
+    async (
+      amount: bigint,
+      userAddress: Address,
+      stakerAddress?: Address
+    ) => {
       if (!connector || !publicClient) {
         setWithdrawError(new Error("Wallet not connected"));
         setStep("error");
@@ -45,12 +57,19 @@ export function useWithdraw() {
         const walletClient = client.extend(walletActions);
 
         setStep("initiating");
-        const txHash = await walletClient.writeContract({
-          address: governanceAddress,
-          abi: GovernanceAbi,
-          functionName: "initiateWithdraw",
-          args: [userAddress, amount],
-        });
+        const txHash = stakerAddress
+          ? await walletClient.writeContract({
+              address: stakerAddress,
+              abi: StakerAbi,
+              functionName: "initiateWithdrawFromGovernance",
+              args: [amount],
+            })
+          : await walletClient.writeContract({
+              address: governanceAddress,
+              abi: GovernanceAbi,
+              functionName: "initiateWithdraw",
+              args: [userAddress, amount],
+            });
         if (abortRef.current) return;
 
         setStep("waiting");
@@ -60,7 +79,6 @@ export function useWithdraw() {
         });
         if (abortRef.current) return;
 
-        // Parse WithdrawInitiated event to get withdrawalId
         const logs = parseEventLogs({
           abi: GovernanceAbi,
           eventName: "WithdrawInitiated",
@@ -73,7 +91,6 @@ export function useWithdraw() {
           setWithdrawalId(wId);
         }
 
-        // Fetch unlocksAt from the withdrawal struct
         if (wId !== undefined) {
           try {
             const withdrawal = await publicClient.readContract({
@@ -84,7 +101,7 @@ export function useWithdraw() {
             });
             setUnlocksAt((withdrawal as { unlocksAt: bigint }).unlocksAt);
           } catch {
-            // Non-critical: success screen will work without unlocksAt
+            // unlocksAt is optional on the success screen
           }
         }
 
