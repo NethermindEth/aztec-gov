@@ -3,7 +3,9 @@
 import { defineChain, http, type Chain } from "viem";
 import { mainnet, sepolia, foundry as foundryBase } from "wagmi/chains";
 import { cookieStorage, createConfig, createStorage } from "wagmi";
+import { connect as wagmiConnect, disconnect as wagmiDisconnect } from "wagmi/actions";
 import type { Config } from "wagmi";
+import { injected } from "wagmi/connectors";
 import { connectorsForWallets } from "@rainbow-me/rainbowkit";
 import {
   metaMaskWallet,
@@ -90,12 +92,20 @@ export function getConfig(): Config {
       );
     }
 
-    const connectors = isBrowser
+    const baseConnectors = isBrowser
       ? connectorsForWallets(
           [{ groupName: "Popular", wallets }],
           { appName: "Aztec Governance", projectId: WALLETCONNECT_PROJECT_ID }
         )
       : [];
+
+    // E2E backdoor: adds a plain injected() connector that uses window.ethereum
+    // directly. RainbowKit's metaMaskWallet uses the MetaMask SDK which ignores
+    // window.ethereum in headless mode. No effect without NEXT_PUBLIC_E2E=1.
+    const connectors = [...baseConnectors];
+    if (isBrowser && process.env.NEXT_PUBLIC_E2E === "1") {
+      connectors.push(injected({ shimDisconnect: true }));
+    }
 
     _config = createConfig({
       connectors,
@@ -104,6 +114,25 @@ export function getConfig(): Config {
       ssr: true,
       storage: createStorage({ storage: cookieStorage }),
     });
+
+    // Expose for E2E test harness only.
+    if (isBrowser && process.env.NEXT_PUBLIC_E2E === "1") {
+      (window as unknown as {
+        __wagmiConfig?: Config;
+        __wagmiConnect?: typeof wagmiConnect;
+        __wagmiDisconnect?: typeof wagmiDisconnect;
+      }).__wagmiConfig = _config;
+      (window as unknown as {
+        __wagmiConfig?: Config;
+        __wagmiConnect?: typeof wagmiConnect;
+        __wagmiDisconnect?: typeof wagmiDisconnect;
+      }).__wagmiConnect = wagmiConnect;
+      (window as unknown as {
+        __wagmiConfig?: Config;
+        __wagmiConnect?: typeof wagmiConnect;
+        __wagmiDisconnect?: typeof wagmiDisconnect;
+      }).__wagmiDisconnect = wagmiDisconnect;
+    }
   }
   return _config;
 }

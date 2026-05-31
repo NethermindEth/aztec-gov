@@ -42,14 +42,12 @@ interface UseWithdrawalsResult {
   refetch: () => void;
 }
 
-// 49k stays under publicnode's 50k eth_getLogs cap (the wagmi fallback) and
-// works on any paid RPC. Stricter providers (Infura free, etc.) will reject
-// some chunks; the queryFn .catch below treats those as empty and continues.
+// Under publicnode's 50k eth_getLogs cap; paid RPCs accept it too.
 const CHUNK_SIZE = 49_000n;
-// Lock is ~37.6 days; 2M blocks ≈ 277 days catches users who procrastinated
-// finalizing for many months. Pairs with the 49k chunk size to keep scan
-// time under ~20s on Alchemy. Proper long-term fix is the atp-indexer.
-const MAX_BLOCKS_BACK = 2_000_000n;
+// 2M blocks ≈ 277d catches procrastinators (lock is ~37.6d). E2E mode shrinks
+// the lookback so 28 sequential page loads don't saturate the fork RPC.
+const MAX_BLOCKS_BACK =
+  process.env.NEXT_PUBLIC_E2E === "1" ? 50_000n : 2_000_000n;
 
 const withdrawInitiatedEvent = parseAbiItem(
   "event WithdrawInitiated(uint256 indexed withdrawalId, address indexed recipient, uint256 amount)"
@@ -154,7 +152,12 @@ export function useWithdrawals(recipients: Address[]): UseWithdrawalsResult {
       });
 
       const recipientSet = new Set(normalizedRecipients);
-      const nowSec = BigInt(Math.floor(Date.now() / 1000));
+      // Dev-only: NEXT_PUBLIC_DEV_NOW_OVERRIDE (unix seconds) simulates a
+      // future "now" so time-advanced fork withdrawals appear claimable.
+      const override = process.env.NEXT_PUBLIC_DEV_NOW_OVERRIDE;
+      const nowSec = override
+        ? BigInt(override)
+        : BigInt(Math.floor(Date.now() / 1000));
       const out: WithdrawalInfo[] = [];
       for (let i = 0; i < results.length; i++) {
         const r = results[i];
