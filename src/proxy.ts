@@ -3,10 +3,15 @@ import type { NextRequest } from "next/server";
 
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const isDev = process.env.NODE_ENV !== "production";
 
   const csp = [
     "default-src 'self'",
-    `script-src 'nonce-${nonce}' 'strict-dynamic'`,
+    // Turbopack's dev HMR client uses inline + eval scripts that strict-dynamic
+    // would block. Production retains the nonce + strict-dynamic policy.
+    isDev
+      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+      : `script-src 'nonce-${nonce}' 'strict-dynamic'`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob:",
