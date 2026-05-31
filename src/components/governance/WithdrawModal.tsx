@@ -93,6 +93,9 @@ export function WithdrawModal({
 
   // Default to the largest-power source so an ATP-only user lands on their
   // Staker without manual selection.
+  // We depend on the scalar power fields, not `availableSources` (a fresh
+  // array each render) or `reset` (stable from useCallback); listing them
+  // would make this effect re-run every paint or pull stale closures.
   useEffect(() => {
     if (!isOpen || votingPower.isLoading) return;
     setPhase("form");
@@ -428,24 +431,11 @@ export function WithdrawModal({
                     className="text-xs leading-[18px]"
                     style={{ color: "var(--text-faint)" }}
                   >
-                    {source.kind === "staker" ? (
-                      <>
-                        Funds will be released to your vault after the unlock
-                        period. Withdrawal delay:{" "}
-                        {withdrawalDelay
-                          ? formatDuration(withdrawalDelay)
-                          : "~15 days"}
-                        .
-                      </>
-                    ) : (
-                      <>
-                        Your voting power will decrease immediately. Withdrawal
-                        delay:{" "}
-                        {withdrawalDelay
-                          ? formatDuration(withdrawalDelay)
-                          : "~15 days"}
-                        .
-                      </>
+                    {source.kind === "staker"
+                      ? "Funds will be released to your vault after the unlock period."
+                      : "Your voting power will decrease immediately."}
+                    {withdrawalDelay && (
+                      <> Withdrawal delay: {formatDuration(withdrawalDelay)}.</>
                     )}
                   </p>
                 </div>

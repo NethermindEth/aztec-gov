@@ -37,13 +37,14 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
   const { withdrawals, withdrawalDelay, isLoading: withdrawalsLoading } =
     useWithdrawals(recipients);
 
-  const activeWithdrawals = withdrawals.filter((w) => !w.claimed);
+  // `useWithdrawals` already strips claimed=true via its `WithdrawalInfo`
+  // contract, so we can use `withdrawals` directly.
   // Show the section (with a skeleton) while we're still scanning logs — even
-  // before rows are known. The scan walks ~500k blocks in 9k chunks per
-  // recipient and can take several seconds; hiding the section until then
-  // makes rows appear to "pop in" after the page is interactive.
+  // before rows are known. The scan walks ~2M blocks in 49k chunks per
+  // recipient (~20s on Alchemy); hiding the section entirely would make rows
+  // appear to "pop in" once it completes.
   const showWithdrawalsSection =
-    !isLoading && (withdrawalsLoading || activeWithdrawals.length > 0);
+    !isLoading && (withdrawalsLoading || withdrawals.length > 0);
   const stakedTotal = governancePower + totalStakerPower;
   const canWithdraw = !isLoading && stakedTotal > 0n && !!onWithdraw;
 
@@ -223,7 +224,7 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
                   className="text-xs"
                   style={{ color: "var(--text-secondary)" }}
                 >
-                  {withdrawalsLoading ? "(loading…)" : `(${activeWithdrawals.length})`}
+                  {withdrawalsLoading ? "(loading…)" : `(${withdrawals.length})`}
                 </span>
               </div>
               <span
@@ -247,7 +248,7 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
                 <WithdrawalRowSkeleton />
               </>
             ) : (
-              activeWithdrawals.map((w, i) => (
+              withdrawals.map((w, i) => (
                 <WithdrawalRow key={w.id.toString()} withdrawal={w} index={i} delay={withdrawalDelay} />
               ))
             )}
