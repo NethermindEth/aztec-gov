@@ -170,6 +170,9 @@ console.log("\n--- Test 2 + 3: Initiate as real owner; calldata identity check -
 const USER = getAddress("0x78FA029F04251cc810DFF72CCC7B4764DBC16899");
 const STAKER = getAddress("0xEaDd1e65dCCeB249156bB3E558479418E19B4fC0");
 
+const snapId = await rpc("evm_snapshot");
+try {
+
 await rpc("anvil_setBalance", [USER, toHex(10n * 10n ** 18n)]);
 await rpc("anvil_impersonateAccount", [USER]);
 
@@ -264,6 +267,11 @@ const postFinSurfaced = await simulateUseWithdrawals(newRecipients);
 const stillThere = postFinSurfaced.find((w) => w.id === newId);
 if (stillThere) fail(`Dashboard would still show finalized withdrawal id=${newId}. filter bug`);
 pass(`Dashboard simulation: row id=${newId} correctly removed after finalize`);
+
+} finally {
+  await rpc("evm_revert", [snapId]);
+  pass(`State reverted via evm_revert`);
+}
 
 // Summary
 console.log("\n  ALL TESTS PASSED");
