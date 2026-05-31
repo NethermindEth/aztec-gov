@@ -60,8 +60,7 @@ await rpc("anvil_setBalance", [USER, toHex(10n * 10n ** 18n)]);
 await rpc("anvil_impersonateAccount", [USER]);
 
 // Test 1: Calldata identity
-console.log("
-" + "  Test 1: Calldata identity for both contract calls");
+console.log("\n  Test 1: Calldata identity for both contract calls");
 
 const amount = 500n * 10n ** 15n; // 0.5 AZT
 
@@ -85,8 +84,7 @@ pass(`approve calldata: ${approveData}`);
 pass(`deposit calldata: ${depositData}`);
 
 // Test 2: Full two-tx flow as the real ATP holder
-console.log("
-" + "  Test 2: Two-tx flow (approveStaker -> depositIntoGovernance)");
+console.log("\n  Test 2: Two-tx flow (approveStaker -> depositIntoGovernance)");
 
 const atpBalBefore = await c.readContract({ address: AZT, abi: [balanceOfAbi], functionName: "balanceOf", args: [ATP] });
 const allowanceBefore = await c.readContract({ address: AZT, abi: [allowanceAbi], functionName: "allowance", args: [ATP, STAKER] });
@@ -130,8 +128,7 @@ pass(`  Staker power Δ +${amount} wei`);
 pass(`  Allowance consumed: ${allowanceAfterApprove} → 0`);
 
 // Test 3: Skip-approve optimization
-console.log("
-" + "  Test 3: Skip-approve when allowance already covers amount");
+console.log("\n  Test 3: Skip-approve when allowance already covers amount");
 
 // Approve a large amount once
 const bigApprove = encodeFunctionData({
@@ -160,8 +157,7 @@ if (rcpt3.status !== "success") fail("deposit (skip-approve path) reverted");
 pass(`Single-tx deposit succeeded (allowance pre-existed)`);
 
 // Summary
-console.log("
-" + "  ALL TESTS PASSED, PR B is contract-correct");
+console.log("\n  ALL TESTS PASSED, PR B is contract-correct");
 console.log("Verified:");
 console.log("  ✓ ATP.approveStaker(uint256) calldata builds + executes");
 console.log("  ✓ Staker.depositIntoGovernance(uint256) calldata builds + executes");
