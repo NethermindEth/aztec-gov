@@ -27,8 +27,6 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
     supplyPercentage,
     isLoading,
   } = useVotingPower(address, supply);
-  // ATP-routed withdrawals are emitted with recipient = ATP, not the wallet,
-  // so the scan set must include every ATP the user owns.
   const { holdings } = useUserStakers(address);
   const recipients = useMemo<Address[]>(() => {
     const atps = holdings.map((h) => h.address);
@@ -37,12 +35,7 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
   const { withdrawals, withdrawalDelay, isLoading: withdrawalsLoading } =
     useWithdrawals(recipients);
 
-  // `useWithdrawals` already strips claimed=true via its `WithdrawalInfo`
-  // contract, so we can use `withdrawals` directly.
-  // Show the section (with a skeleton) while we're still scanning logs — even
-  // before rows are known. The scan walks ~2M blocks in 49k chunks per
-  // recipient (~20s on Alchemy); hiding the section entirely would make rows
-  // appear to "pop in" once it completes.
+  // Render the section while the log scan runs so rows don't pop in.
   const showWithdrawalsSection =
     !isLoading && (withdrawalsLoading || withdrawals.length > 0);
   const stakedTotal = governancePower + totalStakerPower;
@@ -259,6 +252,59 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
   );
 }
 
+type WithdrawalStatus = "claimed" | "ready" | "unlocking";
+
+function WithdrawalStatusBadge({ status }: { status: WithdrawalStatus }) {
+  if (status === "claimed") {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium tracking-wider uppercase border"
+        style={{
+          backgroundColor: "var(--status-active-bg)",
+          borderColor: "var(--status-active-border)",
+          color: "var(--status-active-text)",
+        }}
+      >
+        ✓ Claimed
+      </span>
+    );
+  }
+  if (status === "ready") {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium tracking-wider uppercase border"
+        style={{
+          backgroundColor: "var(--status-active-bg)",
+          borderColor: "var(--status-active-border)",
+          color: "var(--status-active-text)",
+        }}
+      >
+        <span
+          className="w-1.5 h-1.5 rounded-full inline-block"
+          style={{ backgroundColor: "var(--status-active-text)" }}
+        />
+        Ready to claim
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium tracking-wider uppercase border"
+      style={{
+        backgroundColor: "var(--status-pending-bg)",
+        borderColor: "var(--status-pending-border)",
+        color: "var(--status-pending-text)",
+      }}
+    >
+      <span
+        className="w-1.5 h-1.5 rounded-full inline-block"
+        style={{ backgroundColor: "var(--status-pending-text)" }}
+      />
+      Unlocking
+    </span>
+  );
+}
+
 function WithdrawalRow({ withdrawal, index, delay }: { withdrawal: WithdrawalInfo; index: number; delay?: bigint }) {
   const { finalize, step } = useFinalizeWithdraw();
   const [error, setError] = useState<string | null>(null);
@@ -278,11 +324,16 @@ function WithdrawalRow({ withdrawal, index, delay }: { withdrawal: WithdrawalInf
   const isAwaitingSignature = step === "finalizing";
   const isConfirming = step === "waiting";
   const isInFlight = isAwaitingSignature || isConfirming;
-  const buttonLabel = isAwaitingSignature
-    ? "Confirm in wallet…"
-    : isConfirming
-      ? "Confirming…"
-      : "Claim";
+
+  let buttonLabel: string;
+  if (isAwaitingSignature) buttonLabel = "Confirm in wallet…";
+  else if (isConfirming) buttonLabel = "Confirming…";
+  else buttonLabel = "Claim";
+
+  let badgeStatus: WithdrawalStatus;
+  if (isFinalized) badgeStatus = "claimed";
+  else if (isReady) badgeStatus = "ready";
+  else badgeStatus = "unlocking";
 
   return (
     <div
@@ -301,51 +352,9 @@ function WithdrawalRow({ withdrawal, index, delay }: { withdrawal: WithdrawalInf
           Withdrawal #{index + 1}
         </span>
 
-        {/* Badge — Finalized takes precedence so the user sees acknowledgement
-            during the brief window before the next useWithdrawals refetch
-            (every 12s) removes the row. */}
-        {isFinalized ? (
-          <span
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium tracking-wider uppercase border"
-            style={{
-              backgroundColor: "var(--status-active-bg)",
-              borderColor: "var(--status-active-border)",
-              color: "var(--status-active-text)",
-            }}
-          >
-            ✓ Claimed
-          </span>
-        ) : isReady ? (
-          <span
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium tracking-wider uppercase border"
-            style={{
-              backgroundColor: "var(--status-active-bg)",
-              borderColor: "var(--status-active-border)",
-              color: "var(--status-active-text)",
-            }}
-          >
-            <span
-              className="w-1.5 h-1.5 rounded-full inline-block"
-              style={{ backgroundColor: "var(--status-active-text)" }}
-            />
-            Ready to claim
-          </span>
-        ) : (
-          <span
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium tracking-wider uppercase border"
-            style={{
-              backgroundColor: "var(--status-pending-bg)",
-              borderColor: "var(--status-pending-border)",
-              color: "var(--status-pending-text)",
-            }}
-          >
-            <span
-              className="w-1.5 h-1.5 rounded-full inline-block"
-              style={{ backgroundColor: "var(--status-pending-text)" }}
-            />
-            Unlocking
-          </span>
-        )}
+        {/* Finalized takes precedence so the user sees acknowledgement during
+            the brief window before useWithdrawals (every 12s) removes the row. */}
+        <WithdrawalStatusBadge status={badgeStatus} />
 
         <span className="flex-1" />
 
