@@ -36,13 +36,9 @@ export function useDeposit() {
   /**
    * Deposit `amount` of AZT into Governance.
    *
-   * Two routes depending on `source`:
-   *   - direct (default): wallet approves AZT → Governance.deposit(user, amount).
-   *     Skips the approve tx when the wallet's existing allowance is enough.
-   *   - staker: ATP.approveStaker(amount) → Staker.depositIntoGovernance(amount).
-   *     Skips the approve tx when the ATP's existing allowance to the Staker
-   *     is enough. The Staker pulls AZT from the ATP and deposits to
-   *     Governance with the Staker itself as beneficiary.
+   * Direct (default): wallet approves AZT, then Governance.deposit.
+   * Staker: ATP.approveStaker, then Staker.depositIntoGovernance.
+   * The approve tx is skipped when existing allowance covers `amount`.
    */
   const deposit = useCallback(
     async (
@@ -103,21 +99,24 @@ export function useDeposit() {
         }
 
         setStep("depositing");
-        const depositTx = isStaker
-          ? await walletClient.writeContract({
-              chain,
-              address: source.staker,
-              abi: StakerAbi,
-              functionName: "depositIntoGovernance",
-              args: [amount],
-            })
-          : await walletClient.writeContract({
-              chain,
-              address: governanceAddress,
-              abi: GovernanceAbi,
-              functionName: "deposit",
-              args: [userAddress, amount],
-            });
+        let depositTx;
+        if (isStaker) {
+          depositTx = await walletClient.writeContract({
+            chain,
+            address: source.staker,
+            abi: StakerAbi,
+            functionName: "depositIntoGovernance",
+            args: [amount],
+          });
+        } else {
+          depositTx = await walletClient.writeContract({
+            chain,
+            address: governanceAddress,
+            abi: GovernanceAbi,
+            functionName: "deposit",
+            args: [userAddress, amount],
+          });
+        }
         if (abortRef.current) return;
 
         setStep("waiting-deposit");

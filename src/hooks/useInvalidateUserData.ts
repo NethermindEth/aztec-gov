@@ -3,11 +3,8 @@
 import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-// Invalidates wagmi readContract/readContracts queries (balances, powers,
-// allowances) after a position-changing tx. The withdrawal log scan keyed
-// under "governance-withdrawals" is intentionally NOT touched; use
-// useInvalidateWithdrawals for that. The hardcoded root strings are wagmi v2
-// internals; the e2e integration suite is the canary on upgrades.
+// Invalidates wagmi readContract/readContracts queries after a tx.
+// Withdrawal log scans are not touched; use useInvalidateWithdrawals for those.
 export function useInvalidateUserData() {
   const queryClient = useQueryClient();
   return useCallback(() => {
