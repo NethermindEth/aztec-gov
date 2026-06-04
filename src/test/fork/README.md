@@ -13,6 +13,19 @@ Anvil running on `:8545` against a mainnet fork:
 anvil --fork-url <YOUR_RPC_URL> --chain-id 31337 --port 8545 --auto-impersonate
 ```
 
+Some tests (`deposit.test.mjs`, `deposit-edges.test.mjs`) assume the canonical
+user's ATP holds the ~2.962 AZT fixture balance. If real mainnet state has
+drifted (e.g. the user did a MAX deposit and only dust is left), seed the
+balance before running:
+
+```bash
+WALLET=0x78FA029F04251cc810DFF72CCC7B4764DBC16899 yarn test:manual:setup
+```
+
+That pokes the ATP balance back to 2962188205520823244 wei and sets the
+operator to the canonical user (matches the mainnet operator). Skip this
+step if `cast call $ATP balanceOf` already shows the canonical amount.
+
 ## Run
 
 ```bash
