@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
-import { parseAbiItem, type Address } from "viem";
+import { parseAbiItem, type Address, type PublicClient } from "viem";
 import { GovernanceAbi, governanceAddress } from "@/lib/contracts";
 import { REFETCH_INTERVAL } from "@/lib/constants";
 
@@ -42,10 +42,10 @@ interface UseWithdrawalsResult {
   refetch: () => void;
 }
 
-// Under publicnode's 50k eth_getLogs cap; paid RPCs accept it too.
+// Under publicnode's 50k eth_getLogs cap; rejected chunks fall through as empty.
 const CHUNK_SIZE = 49_000n;
-// 2M blocks ≈ 277d catches procrastinators (lock is ~37.6d). E2E mode shrinks
-// the lookback so 28 sequential page loads don't saturate the fork RPC.
+// ~277 days at 12s blocks. E2E mode shrinks the lookback so 28 sequential
+// page loads don't saturate the fork RPC. Long-term fix is the indexer.
 const MAX_BLOCKS_BACK =
   process.env.NEXT_PUBLIC_E2E === "1" ? 50_000n : 2_000_000n;
 
@@ -79,6 +79,90 @@ export function useWithdrawalDelay(): bigint | undefined {
   return data ?? undefined;
 }
 
+// Walks blocks in chunks and returns the set of withdrawalIds whose
+// recipient is in `recipients`. Failed chunks are treated as empty.
+async function scanWithdrawalIds(
+  client: PublicClient,
+  recipients: Address[],
+  lookback: bigint,
+  chunkSize: bigint
+): Promise<bigint[]> {
+  const blockNumber = await client.getBlockNumber();
+  const endBlock = blockNumber > lookback ? blockNumber - lookback : 0n;
+  const ids = new Set<bigint>();
+
+  for (let toBlock = blockNumber; toBlock >= endBlock; toBlock -= chunkSize) {
+    const fromBlock =
+      toBlock - chunkSize + 1n < endBlock ? endBlock : toBlock - chunkSize + 1n;
+
+    const perRecipient = await Promise.all(
+      recipients.map((r) =>
+        client
+          .getLogs({
+            address: governanceAddress,
+            event: withdrawInitiatedEvent,
+            args: { recipient: r },
+            fromBlock,
+            toBlock,
+          })
+          .catch((err) => {
+            console.warn(
+              `useWithdrawals: getLogs failed for ${fromBlock}-${toBlock}`,
+              err
+            );
+            return [];
+          })
+      )
+    );
+    for (const logs of perRecipient) {
+      for (const log of logs) {
+        if (log.args.withdrawalId != null) ids.add(log.args.withdrawalId);
+      }
+    }
+  }
+
+  return Array.from(ids);
+}
+
+// Multicalls getWithdrawal(id) for each id and filters by claimed=false +
+// recipient match.
+async function resolveWithdrawals(
+  client: PublicClient,
+  ids: bigint[],
+  recipientSet: Set<string>,
+  nowSec: bigint
+): Promise<WithdrawalInfo[]> {
+  if (ids.length === 0) return [];
+
+  const results = await client.multicall({
+    contracts: ids.map((id) => ({
+      address: governanceAddress,
+      abi: GovernanceAbi,
+      functionName: "getWithdrawal" as const,
+      args: [id] as const,
+    })),
+    allowFailure: true,
+  });
+
+  const out: WithdrawalInfo[] = [];
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (r.status !== "success" || !r.result) continue;
+    const w = r.result as unknown as WithdrawalRaw;
+    if (w.claimed) continue;
+    if (!recipientSet.has(w.recipient.toLowerCase())) continue;
+    out.push({
+      id: ids[i],
+      amount: w.amount,
+      unlocksAt: w.unlocksAt,
+      recipient: w.recipient,
+      claimed: false,
+      status: w.unlocksAt <= nowSec ? "ready" : "pending",
+    });
+  }
+  return out;
+}
+
 /**
  * Unclaimed Governance withdrawals where `recipient` is one of `recipients`.
  *
@@ -101,56 +185,12 @@ export function useWithdrawals(recipients: Address[]): UseWithdrawalsResult {
     refetchInterval: REFETCH_INTERVAL,
     refetchIntervalInBackground: false,
     queryFn: async (): Promise<WithdrawalInfo[]> => {
-      const blockNumber = await publicClient!.getBlockNumber();
-      const endBlock =
-        blockNumber > MAX_BLOCKS_BACK ? blockNumber - MAX_BLOCKS_BACK : 0n;
-
-      const ids = new Set<bigint>();
-      for (let toBlock = blockNumber; toBlock >= endBlock; toBlock -= CHUNK_SIZE) {
-        const fromBlock =
-          toBlock - CHUNK_SIZE + 1n < endBlock
-            ? endBlock
-            : toBlock - CHUNK_SIZE + 1n;
-
-        const perRecipient = await Promise.all(
-          normalizedRecipients.map((r) =>
-            publicClient!
-              .getLogs({
-                address: governanceAddress,
-                event: withdrawInitiatedEvent,
-                args: { recipient: r as Address },
-                fromBlock,
-                toBlock,
-              })
-              .catch((err) => {
-                console.warn(
-                  `useWithdrawals: getLogs failed for ${fromBlock}-${toBlock}`,
-                  err
-                );
-                return [];
-              })
-          )
-        );
-        for (const logs of perRecipient) {
-          for (const log of logs) {
-            if (log.args.withdrawalId != null) ids.add(log.args.withdrawalId);
-          }
-        }
-      }
-
-      if (ids.size === 0) return [];
-
-      const orderedIds = Array.from(ids);
-      const results = await publicClient!.multicall({
-        contracts: orderedIds.map((id) => ({
-          address: governanceAddress,
-          abi: GovernanceAbi,
-          functionName: "getWithdrawal" as const,
-          args: [id] as const,
-        })),
-        allowFailure: true,
-      });
-
+      const ids = await scanWithdrawalIds(
+        publicClient!,
+        normalizedRecipients as Address[],
+        MAX_BLOCKS_BACK,
+        CHUNK_SIZE
+      );
       const recipientSet = new Set(normalizedRecipients);
       // Dev-only: NEXT_PUBLIC_DEV_NOW_OVERRIDE (unix seconds) simulates a
       // future "now" so time-advanced fork withdrawals appear claimable.
@@ -158,23 +198,7 @@ export function useWithdrawals(recipients: Address[]): UseWithdrawalsResult {
       const nowSec = override
         ? BigInt(override)
         : BigInt(Math.floor(Date.now() / 1000));
-      const out: WithdrawalInfo[] = [];
-      for (let i = 0; i < results.length; i++) {
-        const r = results[i];
-        if (r.status !== "success" || !r.result) continue;
-        const w = r.result as unknown as WithdrawalRaw;
-        if (w.claimed) continue;
-        if (!recipientSet.has(w.recipient.toLowerCase())) continue;
-        out.push({
-          id: orderedIds[i],
-          amount: w.amount,
-          unlocksAt: w.unlocksAt,
-          recipient: w.recipient,
-          claimed: false,
-          status: w.unlocksAt <= nowSec ? "ready" : "pending",
-        });
-      }
-      return out;
+      return resolveWithdrawals(publicClient!, ids, recipientSet, nowSec);
     },
   });
 
