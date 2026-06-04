@@ -274,10 +274,8 @@ export function DepositModal({
     }
   }, [isOpen, reset]);
 
-  // Auto-pick the highest-balance eligible source on open. Waits for both
-  // voting-power AND ATP-info loads so an ATP-only user isn't latched onto
-  // "Direct (0 AZT)" before vault balances arrive. Scalar deps (not the array)
-  // keep the effect from re-running every paint.
+  // Auto-pick the highest-balance source on open. Waits for both loads to
+  // avoid latching onto "Direct (0 AZT)" before vault balances arrive.
   useEffect(() => {
     if (
       !isOpen ||
