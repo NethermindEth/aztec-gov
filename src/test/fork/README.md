@@ -1,7 +1,7 @@
 # Fork tests
 
-Node scripts that exercise the on-chain contract surface directly against an
-anvil mainnet fork. They build calldata with `viem`, submit txs via the fork
+TypeScript scripts that exercise the on-chain contract surface directly against
+an anvil mainnet fork. They build calldata with `viem`, submit txs via the fork
 RPC, and assert post-state from `eth_call` reads. No browser, no React, no
 wagmi. Contract correctness only.
 
@@ -13,7 +13,7 @@ Anvil running on `:8545` against a mainnet fork:
 anvil --fork-url <YOUR_RPC_URL> --chain-id 31337 --port 8545 --auto-impersonate
 ```
 
-Some tests (`deposit.test.mjs`, `deposit-edges.test.mjs`) assume the canonical
+Some tests (`deposit.test.ts`, `deposit-edges.test.ts`) assume the canonical
 user's ATP holds the ~2.962 AZT fixture balance. If real mainnet state has
 drifted (e.g. the user did a MAX deposit and only dust is left), seed the
 balance before running:
@@ -30,7 +30,7 @@ step if `cast call $ATP balanceOf` already shows the canonical amount.
 
 ```bash
 yarn test:fork                                # all tests sequentially
-node src/test/fork/max-dust.test.mjs          # a single test
+npx tsx src/test/fork/max-dust.test.ts        # a single test
 ```
 
 Each test is self-contained. It impersonates the canonical user, snapshots
@@ -41,11 +41,11 @@ matter.
 
 | File | Scope |
 |---|---|
-| [`deposit.test.mjs`](./deposit.test.mjs) | Deposit-via-Staker calldata identity, two-tx flow, skip-approve when allowance covers, exact allowance consumption |
-| [`deposit-edges.test.mjs`](./deposit-edges.test.mjs) | Wallet (direct) path regression, multi-user picker math, amount validation edges |
-| [`withdraw.test.mjs`](./withdraw.test.mjs) | Full withdraw lifecycle across 5 known stuck-users: initiate, time-advance, finalize, `recipient = ATP` invariant |
-| [`max-dust.test.mjs`](./max-dust.test.mjs) | Post-audit fix: `ATP.getOperator` read; MAX-deposit and MAX-withdraw both land at exactly 0 wei |
-| [`max-dust-edges.test.mjs`](./max-dust-edges.test.mjs) | Wallet-path MAX dust via `ERC20.approve`, approve-then-revert recovery, multi-ATP operators, multicall handling of missing `getOperator` selector |
+| [`deposit.test.ts`](./deposit.test.ts) | Deposit-via-Staker calldata identity, two-tx flow, skip-approve when allowance covers, exact allowance consumption |
+| [`deposit-edges.test.ts`](./deposit-edges.test.ts) | Wallet (direct) path regression, multi-user picker math, amount validation edges |
+| [`withdraw.test.ts`](./withdraw.test.ts) | Full withdraw lifecycle across 5 known stuck-users: initiate, time-advance, finalize, `recipient = ATP` invariant |
+| [`max-dust.test.ts`](./max-dust.test.ts) | Post-audit fix: `ATP.getOperator` read; MAX-deposit and MAX-withdraw both land at exactly 0 wei |
+| [`max-dust-edges.test.ts`](./max-dust-edges.test.ts) | Wallet-path MAX dust via `ERC20.approve`, approve-then-revert recovery, multi-ATP operators, multicall handling of missing `getOperator` selector |
 
 ## What this layer can't catch
 
