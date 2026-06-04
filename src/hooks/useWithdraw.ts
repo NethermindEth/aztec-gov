@@ -57,19 +57,22 @@ export function useWithdraw() {
         const walletClient = client.extend(walletActions);
 
         setStep("initiating");
-        const txHash = stakerAddress
-          ? await walletClient.writeContract({
-              address: stakerAddress,
-              abi: StakerAbi,
-              functionName: "initiateWithdrawFromGovernance",
-              args: [amount],
-            })
-          : await walletClient.writeContract({
-              address: governanceAddress,
-              abi: GovernanceAbi,
-              functionName: "initiateWithdraw",
-              args: [userAddress, amount],
-            });
+        let txHash;
+        if (stakerAddress) {
+          txHash = await walletClient.writeContract({
+            address: stakerAddress,
+            abi: StakerAbi,
+            functionName: "initiateWithdrawFromGovernance",
+            args: [amount],
+          });
+        } else {
+          txHash = await walletClient.writeContract({
+            address: governanceAddress,
+            abi: GovernanceAbi,
+            functionName: "initiateWithdraw",
+            args: [userAddress, amount],
+          });
+        }
         if (abortRef.current) return;
 
         setStep("waiting");

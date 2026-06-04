@@ -7,8 +7,6 @@ export function proxy(request: NextRequest) {
 
   const csp = [
     "default-src 'self'",
-    // Turbopack's dev HMR client uses inline + eval scripts that strict-dynamic
-    // would block. Production retains the nonce + strict-dynamic policy.
     isDev
       ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
       : `script-src 'nonce-${nonce}' 'strict-dynamic'`,

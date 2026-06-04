@@ -33,6 +33,62 @@ function sourceKey(source: WithdrawSource): string {
   return source.kind === "direct" ? "direct" : `staker:${source.address}`;
 }
 
+function SourcePickerButton({
+  label,
+  power,
+  selected,
+  disabled,
+  showDivider,
+  onSelect,
+}: {
+  label: string;
+  power: bigint;
+  selected: boolean;
+  disabled: boolean;
+  showDivider: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => !disabled && onSelect()}
+      disabled={disabled}
+      className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+      style={{
+        backgroundColor: selected ? "rgba(212, 255, 40, 0.05)" : "transparent",
+        borderTop: showDivider ? "1px solid var(--border-default)" : undefined,
+      }}
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <div
+          className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
+          style={{
+            borderColor: selected ? "var(--accent-primary)" : "var(--text-subtle)",
+          }}
+        >
+          {selected && (
+            <div
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: "var(--accent-primary)" }}
+            />
+          )}
+        </div>
+        <span
+          className="text-sm truncate"
+          style={{
+            color: selected ? "var(--text-primary)" : "var(--text-secondary)",
+          }}
+        >
+          {label}
+        </span>
+      </div>
+      <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>
+        {formatVotesWithUnit(power)}
+      </span>
+    </button>
+  );
+}
+
 function getStepMessage(step: WithdrawStep): string {
   switch (step) {
     case "initiating":
@@ -118,6 +174,7 @@ export function WithdrawModal({
       setAmountInput(formatWithCommas(bigintToRaw(best.power)));
       hasInitialized.current = true;
     }
+    // availableSources is rebuilt each render; we watch its scalar inputs instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, votingPower.isLoading, votingPower.governancePower, votingPower.totalStakerPower]);
 
@@ -330,63 +387,16 @@ export function WithdrawModal({
                     >
                       {availableSources.map((entry, i) => {
                         const key = sourceKey(entry.source);
-                        const selected = sourceKey(source) === key;
-                        const disabled = entry.power === 0n;
                         return (
-                          <button
+                          <SourcePickerButton
                             key={key}
-                            type="button"
-                            onClick={() =>
-                              !disabled && handleSourceChange(entry.source)
-                            }
-                            disabled={disabled}
-                            className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                            style={{
-                              backgroundColor: selected
-                                ? "rgba(212, 255, 40, 0.05)"
-                                : "transparent",
-                              borderTop:
-                                i > 0
-                                  ? "1px solid var(--border-default)"
-                                  : undefined,
-                            }}
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div
-                                className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
-                                style={{
-                                  borderColor: selected
-                                    ? "var(--accent-primary)"
-                                    : "var(--text-subtle)",
-                                }}
-                              >
-                                {selected && (
-                                  <div
-                                    className="w-2 h-2 rounded-full"
-                                    style={{
-                                      backgroundColor: "var(--accent-primary)",
-                                    }}
-                                  />
-                                )}
-                              </div>
-                              <span
-                                className="text-sm truncate"
-                                style={{
-                                  color: selected
-                                    ? "var(--text-primary)"
-                                    : "var(--text-secondary)",
-                                }}
-                              >
-                                {entry.label}
-                              </span>
-                            </div>
-                            <span
-                              className="text-xs shrink-0"
-                              style={{ color: "var(--text-muted)" }}
-                            >
-                              {formatVotesWithUnit(entry.power)}
-                            </span>
-                          </button>
+                            label={entry.label}
+                            power={entry.power}
+                            selected={sourceKey(source) === key}
+                            disabled={entry.power === 0n}
+                            showDivider={i > 0}
+                            onSelect={() => handleSourceChange(entry.source)}
+                          />
                         );
                       })}
                     </div>
