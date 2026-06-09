@@ -553,32 +553,23 @@ export function WithdrawModal({
                   </span>
                 </div>
               )}
-              {unlocksAt !== undefined && (
-                <div className="flex items-center justify-between">
-                  <span style={{ color: "var(--text-secondary)" }}>
-                    Unlocks
-                  </span>
-                  <span
-                    className="font-medium"
-                    style={{ color: "var(--accent-tertiary)" }}
-                  >
-                    {formatDateFull(unlocksAt)}
-                  </span>
-                </div>
-              )}
-              {unlocksAt !== undefined && (
-                <div className="flex items-center justify-between">
-                  <span style={{ color: "var(--text-secondary)" }}>
-                    Delay
-                  </span>
-                  <span
-                    className="font-medium"
-                    style={{ color: "var(--text-faint)" }}
-                  >
-                    {formatDelayFromTimestamp(unlocksAt)}
-                  </span>
-                </div>
-              )}
+              {unlocksAt !== undefined && (() => {
+                const remaining = formatDelayFromTimestamp(unlocksAt);
+                return (
+                  <div className="flex items-center justify-between">
+                    <span style={{ color: "var(--text-secondary)" }}>
+                      Unlocks
+                    </span>
+                    <span
+                      className="font-medium"
+                      style={{ color: "var(--accent-tertiary)" }}
+                    >
+                      {formatDateFull(unlocksAt)}
+                      {remaining !== "Ready" && ` (in ${remaining})`}
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
 
             {txHash && (
