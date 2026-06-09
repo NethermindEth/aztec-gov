@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { ProposalDetailClient } from "./ProposalDetailClient";
 import type { ProposalDetailView } from "@/lib/types";
-import { connectedWalletDecorator } from "@/test/storybook-decorators";
+import { connectedWalletDecorator } from "@/test/fixtures/storybook-decorators";
 
 const meta: Meta<typeof ProposalDetailClient> = {
   title: "Pages/Proposal Detail",

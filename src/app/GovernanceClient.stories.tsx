@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { GovernanceClient } from "./GovernanceClient";
-import { mockProposalsPageData } from "@/test/mock-proposals";
-import { connectedWalletDecorator } from "@/test/storybook-decorators";
+import { mockProposalsPageData } from "@/test/fixtures/mock-proposals";
+import { connectedWalletDecorator } from "@/test/fixtures/storybook-decorators";
 
 const meta: Meta<typeof GovernanceClient> = {
   title: "Pages/Governance List",
