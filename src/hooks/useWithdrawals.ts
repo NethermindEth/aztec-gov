@@ -44,8 +44,10 @@ interface UseWithdrawalsResult {
 
 // Under publicnode's 50k eth_getLogs cap; rejected chunks fall through as empty.
 const CHUNK_SIZE = 49_000n;
-// ~277 days at 12s blocks. Long-term fix is the indexer.
-const MAX_BLOCKS_BACK = 2_000_000n;
+// ~277 days at 12s blocks. E2E mode shrinks the lookback so 28 sequential
+// page loads don't saturate the fork RPC. Long-term fix is the indexer.
+const MAX_BLOCKS_BACK =
+  process.env.NEXT_PUBLIC_E2E === "1" ? 50_000n : 2_000_000n;
 
 const withdrawInitiatedEvent = parseAbiItem(
   "event WithdrawInitiated(uint256 indexed withdrawalId, address indexed recipient, uint256 amount)"
@@ -190,7 +192,12 @@ export function useWithdrawals(recipients: Address[]): UseWithdrawalsResult {
         CHUNK_SIZE
       );
       const recipientSet = new Set(normalizedRecipients);
-      const nowSec = BigInt(Math.floor(Date.now() / 1000));
+      // Dev-only: NEXT_PUBLIC_DEV_NOW_OVERRIDE (unix seconds) simulates a
+      // future "now" so time-advanced fork withdrawals appear claimable.
+      const override = process.env.NEXT_PUBLIC_DEV_NOW_OVERRIDE;
+      const nowSec = override
+        ? BigInt(override)
+        : BigInt(Math.floor(Date.now() / 1000));
       return resolveWithdrawals(publicClient!, ids, recipientSet, nowSec);
     },
   });

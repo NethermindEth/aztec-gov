@@ -13,10 +13,15 @@
     "bootstrap-anvil": "npx tsx scripts/bootstrap-anvil.ts",
     "setup": "./scripts/setup.sh",
     "storybook": "storybook dev -p 6006",
-    "test:fork": "for f in src/test/fork/*.test.ts; do echo \"\\n\u25b8 $f\"; npx tsx \"$f\" || exit 1; done",
+    "test:fork": "for f in src/test/fork/*.test.ts; do echo \"\n▸ $f\"; npx tsx \"$f\" || exit 1; done",
     "test:fork:deposit": "npx tsx src/test/fork/deposit.test.ts",
     "test:fork:withdraw": "npx tsx src/test/fork/withdraw.test.ts",
-    "test:fork:max-dust": "npx tsx src/test/fork/max-dust.test.ts"
+    "test:fork:max-dust": "npx tsx src/test/fork/max-dust.test.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:batched": "for f in src/test/e2e/*.spec.ts; do echo \"\n▸ $f\"; npx playwright test \"$f\" || exit 1; done",
+    "test:manual:setup": "./src/test/manual/setup-fork.sh"
   },
   "dependencies": {
     "@rainbow-me/rainbowkit": "^2.2.10",
@@ -28,6 +33,7 @@
     "wagmi": "^2.9.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@storybook/nextjs-vite": "^10.2.15",
     "@storybook/react": "^10.2.15",
     "@tailwindcss/postcss": "^4",
