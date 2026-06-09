@@ -6,6 +6,8 @@ import { getConnectorClient } from "@wagmi/core";
 import {
   GovernanceAbi,
   ERC20Abi,
+  ATPAbi,
+  StakerAbi,
   governanceAddress,
   stakingAssetAddress,
 } from "@/lib/contracts";
@@ -31,8 +33,19 @@ export function useDeposit() {
   const [depositError, setDepositError] = useState<Error | null>(null);
   const abortRef = useRef(false);
 
+  /**
+   * Deposit `amount` of AZT into Governance.
+   *
+   * Direct (default): wallet approves AZT, then Governance.deposit.
+   * Staker: ATP.approveStaker, then Staker.depositIntoGovernance.
+   * The approve tx is skipped when existing allowance covers `amount`.
+   */
   const deposit = useCallback(
-    async (amount: bigint, userAddress: Address) => {
+    async (
+      amount: bigint,
+      userAddress: Address,
+      source?: { kind: "staker"; atp: Address; staker: Address }
+    ) => {
       if (!connector || !publicClient) {
         setDepositError(new Error("Wallet not connected"));
         setStep("error");
@@ -47,30 +60,63 @@ export function useDeposit() {
         const client = await getConnectorClient(config, { connector });
         const walletClient = client.extend(walletActions);
 
-        // Step 1: Approve
-        setStep("approving");
-        const approveTx = await walletClient.writeContract({
-          chain,
+        const isStaker = source?.kind === "staker";
+        const spender = isStaker ? source.staker : governanceAddress;
+        const allowanceOwner = isStaker ? source.atp : userAddress;
+
+        // Skip the approve tx if the existing allowance already covers
+        // `amount`. ATP holders typically have leftover allowance from prior
+        // deposits; wallet users may too if they previously approved more.
+        const existingAllowance = (await publicClient.readContract({
           address: stakingAssetAddress,
           abi: ERC20Abi,
-          functionName: "approve",
-          args: [governanceAddress, amount],
-        });
-        if (abortRef.current) return;
+          functionName: "allowance",
+          args: [allowanceOwner, spender],
+        })) as bigint;
 
-        setStep("waiting-approve");
-        await publicClient.waitForTransactionReceipt({ hash: approveTx, timeout: TX_RECEIPT_TIMEOUT });
-        if (abortRef.current) return;
+        if (existingAllowance < amount) {
+          setStep("approving");
+          const approveTx = isStaker
+            ? await walletClient.writeContract({
+                chain,
+                address: source.atp,
+                abi: ATPAbi,
+                functionName: "approveStaker",
+                args: [amount],
+              })
+            : await walletClient.writeContract({
+                chain,
+                address: stakingAssetAddress,
+                abi: ERC20Abi,
+                functionName: "approve",
+                args: [governanceAddress, amount],
+              });
+          if (abortRef.current) return;
 
-        // Step 2: Deposit
+          setStep("waiting-approve");
+          await publicClient.waitForTransactionReceipt({ hash: approveTx, timeout: TX_RECEIPT_TIMEOUT });
+          if (abortRef.current) return;
+        }
+
         setStep("depositing");
-        const depositTx = await walletClient.writeContract({
-          chain,
-          address: governanceAddress,
-          abi: GovernanceAbi,
-          functionName: "deposit",
-          args: [userAddress, amount],
-        });
+        let depositTx;
+        if (isStaker) {
+          depositTx = await walletClient.writeContract({
+            chain,
+            address: source.staker,
+            abi: StakerAbi,
+            functionName: "depositIntoGovernance",
+            args: [amount],
+          });
+        } else {
+          depositTx = await walletClient.writeContract({
+            chain,
+            address: governanceAddress,
+            abi: GovernanceAbi,
+            functionName: "deposit",
+            args: [userAddress, amount],
+          });
+        }
         if (abortRef.current) return;
 
         setStep("waiting-deposit");

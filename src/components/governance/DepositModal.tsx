@@ -1,11 +1,27 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useReadContract } from "wagmi";
+import { getAddress, type Address } from "viem";
 import { useWallet } from "@/hooks/useWallet";
 import { useVotingPower } from "@/hooks/useVotingPower";
 import { useDeposit, type DepositStep } from "@/hooks/useDeposit";
-import { formatVotesWithUnit, getExplorerUrl, parseAztAmount, bigintToRaw, formatWithCommas } from "@/lib/format";
+import { useUserStakers } from "@/hooks/useUserStakers";
+import { useATPBalances } from "@/hooks/useATPBalances";
+import {
+  ERC20Abi,
+  governanceAddress,
+  stakingAssetAddress,
+} from "@/lib/contracts";
+import {
+  formatVotesWithUnit,
+  getExplorerUrl,
+  parseAztAmount,
+  bigintToRaw,
+  formatWithCommas,
+  truncateAddress,
+} from "@/lib/format";
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -14,7 +30,15 @@ interface DepositModalProps {
   onDepositSuccess?: () => void;
 }
 
-function getButtonLabel(step: DepositStep): string {
+type DepositSource =
+  | { kind: "direct" }
+  | { kind: "staker"; atp: Address; staker: Address };
+
+function sourceKey(source: DepositSource): string {
+  return source.kind === "direct" ? "direct" : `staker:${source.atp}`;
+}
+
+function getButtonLabel(step: DepositStep, needsApprove: boolean): string {
   switch (step) {
     case "approving":
       return "Approve in wallet...";
@@ -25,7 +49,7 @@ function getButtonLabel(step: DepositStep): string {
     case "waiting-deposit":
       return "Waiting for deposit...";
     default:
-      return "Approve & Deposit (2 txs)";
+      return needsApprove ? "Approve & Deposit (2 txs)" : "Deposit (1 tx)";
   }
 }
 
@@ -180,31 +204,126 @@ export function DepositModal({
 }: DepositModalProps) {
   const { address, chain } = useWallet();
   const votingPower = useVotingPower(address, BigInt(totalSupply));
+  const { holdings } = useUserStakers(address);
+  const atpAddresses = useMemo(
+    () => holdings.map((h) => getAddress(h.address)),
+    [holdings]
+  );
+  const {
+    balances: atpBalances,
+    operators: atpOperators,
+    isLoading: atpInfoLoading,
+  } = useATPBalances(atpAddresses);
   const { deposit, step, txHash, isPending, isSuccess, isError, error, reset } =
     useDeposit();
 
+  // Direct is always listed (even at 0 wallet AZT) so the picker is stable.
+  // Unknown operator (still loading) leaves operatorMismatch=false and falls
+  // back to the on-chain revert if the wallet truly isn't the operator.
+  const availableSources = useMemo<
+    {
+      source: DepositSource;
+      power: bigint;
+      label: string;
+      operatorMismatch: boolean;
+    }[]
+  >(() => {
+    const list: {
+      source: DepositSource;
+      power: bigint;
+      label: string;
+      operatorMismatch: boolean;
+    }[] = [
+      {
+        source: { kind: "direct" },
+        power: votingPower.walletBalance,
+        label: "Wallet (Direct)",
+        operatorMismatch: false,
+      },
+    ];
+    for (const h of holdings) {
+      const atp = getAddress(h.address);
+      const balance = atpBalances.get(atp) ?? 0n;
+      const operator = atpOperators.get(atp);
+      const operatorMismatch =
+        !!operator && !!address && operator !== getAddress(address);
+      list.push({
+        source: { kind: "staker", atp, staker: getAddress(h.stakerAddress) },
+        power: balance,
+        label: `Vault ${truncateAddress(atp)}`,
+        operatorMismatch,
+      });
+    }
+    return list;
+  }, [votingPower.walletBalance, holdings, atpBalances, atpOperators, address]);
+
+  const [source, setSource] = useState<DepositSource>({ kind: "direct" });
   const [amountInput, setAmountInput] = useState("");
+  // Exact bigint stashed by MAX so display truncation doesn't strand dust.
+  // Cleared on type or source switch.
+  const [maxOverride, setMaxOverride] = useState<bigint | null>(null);
   const [phase, setPhase] = useState<"form" | "success">("form");
   const hasInitialized = useRef(false);
 
-  // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setPhase("form");
+      setMaxOverride(null);
       reset();
       hasInitialized.current = false;
     }
   }, [isOpen, reset]);
 
-  // Set default amount once voting power loads (only once per open)
+  // Auto-pick the highest-balance source on open. Waits for both loads to
+  // avoid latching onto "Direct (0 AZT)" before vault balances arrive.
   useEffect(() => {
-    if (isOpen && !hasInitialized.current && !votingPower.isLoading) {
-      setAmountInput(formatWithCommas(bigintToRaw(votingPower.walletBalance)));
+    if (
+      !isOpen ||
+      votingPower.isLoading ||
+      atpInfoLoading ||
+      hasInitialized.current
+    )
+      return;
+    const eligible = availableSources.filter((s) => !s.operatorMismatch);
+    const best = [...eligible].sort((a, b) =>
+      a.power > b.power ? -1 : a.power < b.power ? 1 : 0
+    )[0];
+    if (best) {
+      setSource(best.source);
+      setAmountInput(formatWithCommas(bigintToRaw(best.power)));
+      setMaxOverride(best.power);
       hasInitialized.current = true;
     }
-  }, [isOpen, votingPower.isLoading, votingPower.walletBalance]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isOpen,
+    votingPower.isLoading,
+    votingPower.walletBalance,
+    atpBalances,
+    atpInfoLoading,
+  ]);
 
-  // Transition to success on tx hash
+  const selectedPower = useMemo(() => {
+    if (source.kind === "staker") return atpBalances.get(source.atp) ?? 0n;
+    return votingPower.walletBalance;
+  }, [source, atpBalances, votingPower.walletBalance]);
+
+  // Drives the button label ("Deposit (1 tx)" vs "Approve & Deposit (2 txs)").
+  // useDeposit reads the same allowance internally to skip approve when covered.
+  const allowanceOwner = source.kind === "staker" ? source.atp : address;
+  const allowanceSpender =
+    source.kind === "staker" ? source.staker : governanceAddress;
+  const { data: currentAllowance } = useReadContract({
+    address: stakingAssetAddress,
+    abi: ERC20Abi,
+    functionName: "allowance",
+    args:
+      allowanceOwner && allowanceSpender
+        ? [allowanceOwner, allowanceSpender]
+        : undefined,
+    query: { enabled: !!allowanceOwner && !!allowanceSpender },
+  });
+
   useEffect(() => {
     if (isSuccess && txHash) {
       onDepositSuccess?.();
@@ -216,7 +335,6 @@ export function DepositModal({
     onClose();
   }, [onClose]);
 
-  // Escape key
   useEffect(() => {
     if (!isOpen) return;
     function handleKey(e: KeyboardEvent) {
@@ -229,17 +347,48 @@ export function DepositModal({
   if (!isOpen) return null;
 
   const parsedAmount = parseAztAmount(amountInput);
+  // Prefer the MAX-captured bigint so display truncation doesn't lose wei.
+  const effectiveAmount = maxOverride ?? parsedAmount;
   const isValidAmount =
-    parsedAmount !== null && parsedAmount <= votingPower.walletBalance;
+    effectiveAmount !== null &&
+    effectiveAmount > 0n &&
+    effectiveAmount <= selectedPower;
+  const needsApprove =
+    effectiveAmount !== null &&
+    (currentAllowance == null ||
+      (currentAllowance as bigint) < effectiveAmount);
 
   const handleMax = () => {
-    setAmountInput(formatWithCommas(bigintToRaw(votingPower.walletBalance)));
+    setAmountInput(formatWithCommas(bigintToRaw(selectedPower)));
+    setMaxOverride(selectedPower);
+  };
+
+  const handleAmountInputChange = (value: string) => {
+    setAmountInput(value);
+    setMaxOverride(null);
+  };
+
+  const handleSourceChange = (next: DepositSource) => {
+    setSource(next);
+    // Clears any value that was valid against the old source but not the new.
+    setAmountInput("");
+    setMaxOverride(null);
   };
 
   const handleConfirm = () => {
-    if (!parsedAmount || !isValidAmount || !address) return;
-    deposit(parsedAmount, address);
+    if (!effectiveAmount || !isValidAmount || !address) return;
+    if (source.kind === "staker") {
+      deposit(effectiveAmount, address, {
+        kind: "staker",
+        atp: source.atp,
+        staker: source.staker,
+      });
+    } else {
+      deposit(effectiveAmount, address);
+    }
   };
+
+  const showPicker = availableSources.length > 1;
 
   const explorerUrl = chain?.blockExplorers?.default?.url || getExplorerUrl();
   const truncatedHash = txHash
@@ -255,6 +404,9 @@ export function DepositModal({
       }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Deposit AZT"
         className="w-[calc(100%-2rem)] md:w-[480px] max-h-[90vh] overflow-y-auto border"
         style={{
           backgroundColor: "var(--background-primary)",
@@ -293,7 +445,7 @@ export function DepositModal({
               </button>
             </div>
 
-            {/* Transaction Stepper — shown during progress */}
+            {/* Transaction Stepper, shown during progress */}
             {isPending && <DepositStepper step={step} />}
 
             {isPending ? (
@@ -351,32 +503,113 @@ export function DepositModal({
               </>
             ) : (
               <>
-                {/* Wallet balance */}
-                <div className="mb-5">
-                  <label
-                    className="text-[10px] font-semibold tracking-widest uppercase mb-2 block"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    Available to Deposit
-                  </label>
-                  <div
-                    className="border"
-                    style={{ borderColor: "var(--border-default)" }}
-                  >
-                    <div className="flex items-center justify-between px-4 py-3">
-                      <span
-                        className="text-xs"
-                        style={{ color: "var(--text-secondary)" }}
-                      >
-                        Wallet Balance
-                      </span>
-                      <span
-                        className="text-xs font-medium"
-                        style={{ color: "var(--text-primary)" }}
-                      >
-                        {formatVotesWithUnit(votingPower.walletBalance)}
-                      </span>
+                {showPicker && (
+                  <div className="mb-5">
+                    <label
+                      className="text-[10px] font-semibold tracking-widest uppercase mb-2 block"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      Deposit From
+                    </label>
+                    <div
+                      className="border overflow-hidden"
+                      style={{ borderColor: "var(--border-default)" }}
+                    >
+                      {availableSources.map((entry, i) => {
+                        const key = sourceKey(entry.source);
+                        const selected = sourceKey(source) === key;
+                        const disabled =
+                          entry.power === 0n || entry.operatorMismatch;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() =>
+                              !disabled && handleSourceChange(entry.source)
+                            }
+                            disabled={disabled}
+                            title={
+                              entry.operatorMismatch
+                                ? "Operator was reassigned. This wallet cannot drive this vault."
+                                : undefined
+                            }
+                            className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                            style={{
+                              backgroundColor: selected
+                                ? "rgba(212, 255, 40, 0.05)"
+                                : "transparent",
+                              borderTop:
+                                i > 0
+                                  ? "1px solid var(--border-default)"
+                                  : undefined,
+                            }}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div
+                                className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
+                                style={{
+                                  borderColor: selected
+                                    ? "var(--accent-primary)"
+                                    : "var(--text-subtle)",
+                                }}
+                              >
+                                {selected && (
+                                  <div
+                                    className="w-2 h-2 rounded-full"
+                                    style={{
+                                      backgroundColor: "var(--accent-primary)",
+                                    }}
+                                  />
+                                )}
+                              </div>
+                              <div className="flex flex-col min-w-0">
+                                <span
+                                  className="text-sm truncate"
+                                  style={{
+                                    color: selected
+                                      ? "var(--text-primary)"
+                                      : "var(--text-secondary)",
+                                  }}
+                                >
+                                  {entry.label}
+                                </span>
+                                {entry.operatorMismatch && (
+                                  <span
+                                    className="text-[10px]"
+                                    style={{ color: "var(--accent-secondary)" }}
+                                  >
+                                    Operator reassigned
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <span
+                              className="text-xs shrink-0"
+                              style={{ color: "var(--text-muted)" }}
+                            >
+                              {formatVotesWithUnit(entry.power)}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
+                  </div>
+                )}
+
+                <div className="mb-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <span
+                      className="text-[10px] font-semibold tracking-widest uppercase"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      Available
+                    </span>
+                    <span
+                      className="text-xs font-medium"
+                      style={{ color: "var(--text-primary)" }}
+                    >
+                      {formatVotesWithUnit(selectedPower)}
+                    </span>
                   </div>
                 </div>
 
@@ -404,7 +637,7 @@ export function DepositModal({
                     <input
                       type="text"
                       value={amountInput}
-                      onChange={(e) => setAmountInput(e.target.value)}
+                      onChange={(e) => handleAmountInputChange(e.target.value)}
                       className="flex-1 bg-transparent text-sm outline-none"
                       style={{ color: "var(--text-primary)" }}
                       placeholder="0"
@@ -416,15 +649,14 @@ export function DepositModal({
                       AZT
                     </span>
                   </div>
-                  {parsedAmount !== null &&
-                    parsedAmount > votingPower.walletBalance && (
-                      <p
-                        className="text-[10px] mt-1"
-                        style={{ color: "var(--accent-secondary)" }}
-                      >
-                        Exceeds wallet balance
-                      </p>
-                    )}
+                  {parsedAmount !== null && parsedAmount > selectedPower && (
+                    <p
+                      className="text-[10px] mt-1"
+                      style={{ color: "var(--accent-secondary)" }}
+                    >
+                      Exceeds available balance for this source
+                    </p>
+                  )}
                   {isError && (
                     <p
                       className="text-[10px] mt-1"
@@ -445,7 +677,7 @@ export function DepositModal({
                     color: "var(--background-primary)",
                   }}
                 >
-                  {getButtonLabel(step)}
+                  {getButtonLabel(step, needsApprove)}
                 </button>
               </>
             )}

@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import type { ProposalView } from "@/lib/types";
 import { useInvalidateProposal } from "@/hooks/useProposalQuery";
+import { useInvalidateUserData } from "@/hooks/useInvalidateUserData";
 import { ProposalRowCompact } from "@/components/governance/ProposalRowCompact";
 import { ProposalExpandedContent } from "@/components/governance/ProposalExpandedContent";
 import { VoteModal } from "@/components/governance/VoteModal";
@@ -25,6 +26,7 @@ export function ExpandableProposalRow({
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [initialSupport, setInitialSupport] = useState(true);
   const invalidateProposal = useInvalidateProposal();
+  const invalidateUserData = useInvalidateUserData();
 
   const handleVote = useCallback((support: boolean) => {
     setInitialSupport(support);
@@ -33,7 +35,13 @@ export function ExpandableProposalRow({
 
   const handleVoteSuccess = useCallback(() => {
     invalidateProposal(proposal.numericId);
-  }, [invalidateProposal, proposal.numericId]);
+    invalidateUserData();
+  }, [invalidateProposal, invalidateUserData, proposal.numericId]);
+
+  const handleDepositSuccess = useCallback(() => {
+    invalidateProposal(proposal.numericId);
+    invalidateUserData();
+  }, [invalidateProposal, invalidateUserData, proposal.numericId]);
 
   return (
     <>
@@ -81,6 +89,7 @@ export function ExpandableProposalRow({
         isOpen={depositModalOpen}
         onClose={() => setDepositModalOpen(false)}
         totalSupply={totalSupply}
+        onDepositSuccess={handleDepositSuccess}
       />
     </>
   );

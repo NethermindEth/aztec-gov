@@ -17,6 +17,10 @@ import { VotingPowerPanel } from "@/components/governance/VotingPowerPanel";
 import { ExpandableProposalRow } from "@/components/governance/ExpandableProposalRow";
 import { DepositModal } from "@/components/governance/DepositModal";
 import { WithdrawModal } from "@/components/governance/WithdrawModal";
+import {
+  useInvalidateUserData,
+  useInvalidateWithdrawals,
+} from "@/hooks/useInvalidateUserData";
 import type { ProposalsPageData } from "@/lib/types";
 
 export type { ProposalView } from "@/lib/types";
@@ -132,6 +136,13 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
+
+  const invalidateUserData = useInvalidateUserData();
+  const invalidateWithdrawals = useInvalidateWithdrawals();
+  const handleWithdrawSuccess = useCallback(() => {
+    invalidateUserData();
+    invalidateWithdrawals();
+  }, [invalidateUserData, invalidateWithdrawals]);
 
   const handleToggle = useCallback((id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
@@ -265,12 +276,14 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
         isOpen={depositModalOpen}
         onClose={() => setDepositModalOpen(false)}
         totalSupply={totalPower}
+        onDepositSuccess={invalidateUserData}
       />
 
       <WithdrawModal
         isOpen={withdrawModalOpen}
         onClose={() => setWithdrawModalOpen(false)}
         totalSupply={totalPower}
+        onWithdrawSuccess={handleWithdrawSuccess}
       />
     </div>
   );
