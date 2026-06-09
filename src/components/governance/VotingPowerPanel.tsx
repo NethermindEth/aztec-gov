@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import type { Address } from "viem";
 import { useWallet } from "@/hooks/useWallet";
 import { useVotingPower } from "@/hooks/useVotingPower";
 import { useWithdrawals, type WithdrawalInfo } from "@/hooks/useWithdrawals";
+import { useUserStakers } from "@/hooks/useUserStakers";
 import { useFinalizeWithdraw } from "@/hooks/useFinalizeWithdraw";
-import { formatVotesWithUnit, formatTimeRemaining, sanitizeTransactionError } from "@/lib/format";
+import { formatVotesWithUnit, formatTimeRemaining, sanitizeTransactionError, formatDuration } from "@/lib/format";
 
 interface VotingPowerPanelProps {
   totalSupply: string;
@@ -25,10 +27,19 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
     supplyPercentage,
     isLoading,
   } = useVotingPower(address, supply);
-  const { withdrawals, withdrawalDelay } = useWithdrawals(address);
+  const { holdings } = useUserStakers(address);
+  const recipients = useMemo<Address[]>(() => {
+    const atps = holdings.map((h) => h.address);
+    return address ? [address, ...atps] : atps;
+  }, [address, holdings]);
+  const { withdrawals, withdrawalDelay, isLoading: withdrawalsLoading } =
+    useWithdrawals(recipients);
 
-  const activeWithdrawals = withdrawals.filter((w) => !w.claimed);
+  // Render the section while the log scan runs so rows don't pop in.
+  const showWithdrawalsSection =
+    !isLoading && (withdrawalsLoading || withdrawals.length > 0);
   const stakedTotal = governancePower + totalStakerPower;
+  const canWithdraw = !isLoading && stakedTotal > 0n && !!onWithdraw;
 
   return (
     <div
@@ -145,14 +156,14 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
         </div>
       )}
 
-      {/* Withdraw CTA when governance power > 0 */}
-      {!isLoading && governancePower > 0n && onWithdraw && (
+      {/* Withdraw CTA — direct or via Staker; modal's picker decides routing. */}
+      {canWithdraw && (
         <div
           className="hidden md:flex items-center justify-between mx-6 mb-4 px-4 py-3 border"
           style={{ borderColor: "var(--border-default)" }}
         >
           <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
-            You have {formatVotesWithUnit(governancePower)} staked in governance available to withdraw
+            You have {formatVotesWithUnit(stakedTotal)} staked in governance available to withdraw
           </span>
           <button
             onClick={onWithdraw}
@@ -168,8 +179,7 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
         </div>
       )}
 
-      {/* Mobile withdraw button */}
-      {!isLoading && governancePower > 0n && onWithdraw && (
+      {canWithdraw && (
         <div className="flex md:hidden px-4 pb-3">
           <button
             onClick={onWithdraw}
@@ -186,7 +196,7 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
       )}
 
       {/* Active withdrawals */}
-      {!isLoading && activeWithdrawals.length > 0 && (
+      {showWithdrawalsSection && (
         <div className="mx-4 md:mx-6 mb-4">
           <div
             className="flex items-center justify-between px-3 pt-3 pb-2"
@@ -195,18 +205,26 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
               borderColor: "var(--border-default)",
             }}
           >
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="text-sm font-medium tracking-widest uppercase"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  Withdrawals
+                </span>
+                <span
+                  className="text-xs"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  {withdrawalsLoading ? "(loading…)" : `(${withdrawals.length})`}
+                </span>
+              </div>
               <span
-                className="text-sm font-medium tracking-widest uppercase"
-                style={{ color: "var(--text-secondary)" }}
+                className="text-[11px]"
+                style={{ color: "var(--text-faint)" }}
               >
-                Withdrawals
-              </span>
-              <span
-                className="text-xs"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                ({activeWithdrawals.length})
+                Withdrawals unlock after {withdrawalDelay ? formatDuration(withdrawalDelay) : "a cooldown period"}, then must be claimed.
               </span>
             </div>
           </div>
@@ -217,9 +235,16 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
               backgroundColor: "var(--background-subtle)",
             }}
           >
-            {activeWithdrawals.map((w, i) => (
-              <WithdrawalRow key={w.id.toString()} withdrawal={w} index={i} delay={withdrawalDelay} />
-            ))}
+            {withdrawalsLoading ? (
+              <>
+                <WithdrawalRowSkeleton />
+                <WithdrawalRowSkeleton />
+              </>
+            ) : (
+              withdrawals.map((w, i) => (
+                <WithdrawalRow key={w.id.toString()} withdrawal={w} index={i} delay={withdrawalDelay} />
+              ))
+            )}
           </div>
         </div>
       )}
@@ -227,8 +252,61 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
   );
 }
 
+type WithdrawalStatus = "claimed" | "ready" | "unlocking";
+
+function WithdrawalStatusBadge({ status }: { status: WithdrawalStatus }) {
+  if (status === "claimed") {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium tracking-wider uppercase border"
+        style={{
+          backgroundColor: "var(--status-active-bg)",
+          borderColor: "var(--status-active-border)",
+          color: "var(--status-active-text)",
+        }}
+      >
+        ✓ Claimed
+      </span>
+    );
+  }
+  if (status === "ready") {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium tracking-wider uppercase border"
+        style={{
+          backgroundColor: "var(--status-active-bg)",
+          borderColor: "var(--status-active-border)",
+          color: "var(--status-active-text)",
+        }}
+      >
+        <span
+          className="w-1.5 h-1.5 rounded-full inline-block"
+          style={{ backgroundColor: "var(--status-active-text)" }}
+        />
+        Ready to claim
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium tracking-wider uppercase border"
+      style={{
+        backgroundColor: "var(--status-pending-bg)",
+        borderColor: "var(--status-pending-border)",
+        color: "var(--status-pending-text)",
+      }}
+    >
+      <span
+        className="w-1.5 h-1.5 rounded-full inline-block"
+        style={{ backgroundColor: "var(--status-pending-text)" }}
+      />
+      Unlocking
+    </span>
+  );
+}
+
 function WithdrawalRow({ withdrawal, index, delay }: { withdrawal: WithdrawalInfo; index: number; delay?: bigint }) {
-  const { finalize, isPending: isFinalizing } = useFinalizeWithdraw();
+  const { finalize, step } = useFinalizeWithdraw();
   const [error, setError] = useState<string | null>(null);
 
   const handleFinalize = async () => {
@@ -242,6 +320,20 @@ function WithdrawalRow({ withdrawal, index, delay }: { withdrawal: WithdrawalInf
 
   const amount = formatVotesWithUnit(withdrawal.amount);
   const isReady = withdrawal.status === "ready";
+  const isFinalized = step === "success";
+  const isAwaitingSignature = step === "finalizing";
+  const isConfirming = step === "waiting";
+  const isInFlight = isAwaitingSignature || isConfirming;
+
+  let buttonLabel: string;
+  if (isAwaitingSignature) buttonLabel = "Confirm in wallet…";
+  else if (isConfirming) buttonLabel = "Confirming…";
+  else buttonLabel = "Claim";
+
+  let badgeStatus: WithdrawalStatus;
+  if (isFinalized) badgeStatus = "claimed";
+  else if (isReady) badgeStatus = "ready";
+  else badgeStatus = "unlocking";
 
   return (
     <div
@@ -260,53 +352,25 @@ function WithdrawalRow({ withdrawal, index, delay }: { withdrawal: WithdrawalInf
           Withdrawal #{index + 1}
         </span>
 
-        {/* Badge */}
-        {isReady ? (
-          <span
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium tracking-wider uppercase border"
-            style={{
-              backgroundColor: "var(--status-active-bg)",
-              borderColor: "var(--status-active-border)",
-              color: "var(--status-active-text)",
-            }}
-          >
-            <span
-              className="w-1.5 h-1.5 rounded-full inline-block"
-              style={{ backgroundColor: "var(--status-active-text)" }}
-            />
-            Ready
-          </span>
-        ) : (
-          <span
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium tracking-wider uppercase border"
-            style={{
-              backgroundColor: "var(--status-pending-bg)",
-              borderColor: "var(--status-pending-border)",
-              color: "var(--status-pending-text)",
-            }}
-          >
-            <span
-              className="w-1.5 h-1.5 rounded-full inline-block"
-              style={{ backgroundColor: "var(--status-pending-text)" }}
-            />
-            Withdrawing
-          </span>
-        )}
+        {/* Finalized takes precedence so the user sees acknowledgement during
+            the brief window before useWithdrawals (every 12s) removes the row. */}
+        <WithdrawalStatusBadge status={badgeStatus} />
 
         <span className="flex-1" />
 
-        {/* Finalize button when ready */}
-        {isReady && (
+        {/* Finalize button — hidden once the tx has confirmed so the row reads
+            as a settled success state until refetch sweeps it. */}
+        {isReady && !isFinalized && (
           <button
             onClick={handleFinalize}
-            disabled={isFinalizing}
-            className="px-3 py-1.5 text-[11px] font-medium tracking-wider uppercase cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isInFlight}
+            className={`px-3 py-1.5 text-[11px] font-medium tracking-wider uppercase cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${isInFlight ? "animate-pulse" : ""}`}
             style={{
               backgroundColor: "var(--accent-primary)",
               color: "var(--background-primary)",
             }}
           >
-            {isFinalizing ? "Finalizing..." : "Finalize"}
+            {buttonLabel}
           </button>
         )}
 
@@ -370,6 +434,29 @@ function Bone({ className }: { className?: string }) {
       className={`rounded animate-pulse ${className}`}
       style={{ backgroundColor: "var(--border-default)" }}
     />
+  );
+}
+
+function WithdrawalRowSkeleton() {
+  return (
+    <div
+      className="flex flex-col gap-1.5 px-3 py-2 border-b last:border-b-0"
+      style={{
+        borderColor: "var(--border-default)",
+        backgroundColor: "var(--background-subtle)",
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <Bone className="h-4 w-24" />
+        <Bone className="h-6 w-28" />
+        <span className="flex-1" />
+        <Bone className="h-4 w-16" />
+      </div>
+      <div className="flex items-center gap-2">
+        <Bone className="h-3 w-28" />
+        <Bone className="flex-1 h-[3px]" />
+      </div>
+    </div>
   );
 }
 

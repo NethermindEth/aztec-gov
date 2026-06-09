@@ -39,7 +39,12 @@ export default async function RootLayout({
 
   return (
     <html lang="en">
-      <head>
+      <body
+        className={`${inter.variable} ${lora.variable} antialiased`}
+        // Suppresses hydration warnings from browser extensions (ColorZilla,
+        // Grammarly, etc.) that inject attributes on <body> before hydration.
+        suppressHydrationWarning
+      >
         {process.env.NEXT_PUBLIC_CLARITY_TAG && (
           <Script
             id="microsoft-clarity"
@@ -50,8 +55,6 @@ export default async function RootLayout({
             }}
           />
         )}
-      </head>
-      <body className={`${inter.variable} ${lora.variable} antialiased`}>
         <BetaBanner />
         <Web3Provider cookies={cookies}>{children}</Web3Provider>
       </body>

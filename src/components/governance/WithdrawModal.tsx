@@ -1,12 +1,22 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
+import type { Address } from "viem";
 import { useWallet } from "@/hooks/useWallet";
 import { useVotingPower } from "@/hooks/useVotingPower";
 import { useWithdraw, type WithdrawStep } from "@/hooks/useWithdraw";
-import { useWithdrawals } from "@/hooks/useWithdrawals";
-import { formatVotesWithUnit, formatDateFull, formatDuration, formatDelayFromTimestamp, parseAztAmount, bigintToRaw, formatWithCommas } from "@/lib/format";
+import { useWithdrawalDelay } from "@/hooks/useWithdrawals";
+import {
+  formatVotesWithUnit,
+  formatDateFull,
+  formatDuration,
+  formatDelayFromTimestamp,
+  parseAztAmount,
+  bigintToRaw,
+  formatWithCommas,
+  truncateAddress,
+} from "@/lib/format";
 
 interface WithdrawModalProps {
   isOpen: boolean;
@@ -15,12 +25,76 @@ interface WithdrawModalProps {
   onWithdrawSuccess?: () => void;
 }
 
+type WithdrawSource =
+  | { kind: "direct" }
+  | { kind: "staker"; address: Address };
+
+function sourceKey(source: WithdrawSource): string {
+  return source.kind === "direct" ? "direct" : `staker:${source.address}`;
+}
+
+function SourcePickerButton({
+  label,
+  power,
+  selected,
+  disabled,
+  showDivider,
+  onSelect,
+}: {
+  label: string;
+  power: bigint;
+  selected: boolean;
+  disabled: boolean;
+  showDivider: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => !disabled && onSelect()}
+      disabled={disabled}
+      className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+      style={{
+        backgroundColor: selected ? "rgba(212, 255, 40, 0.05)" : "transparent",
+        borderTop: showDivider ? "1px solid var(--border-default)" : undefined,
+      }}
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <div
+          className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
+          style={{
+            borderColor: selected ? "var(--accent-primary)" : "var(--text-subtle)",
+          }}
+        >
+          {selected && (
+            <div
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: "var(--accent-primary)" }}
+            />
+          )}
+        </div>
+        <span
+          className="text-sm truncate"
+          style={{
+            color: selected ? "var(--text-primary)" : "var(--text-secondary)",
+          }}
+        >
+          {label}
+        </span>
+      </div>
+      <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>
+        {formatVotesWithUnit(power)}
+      </span>
+    </button>
+  );
+}
+
 function getStepMessage(step: WithdrawStep): string {
   switch (step) {
     case "initiating":
-      return "Confirm withdrawal in your wallet\u2026";
+      return "Confirm withdrawal in your wallet…";
     case "waiting":
-      return "Waiting for transaction confirmation\u2026";
+      return "Waiting for transaction confirmation…";
     default:
       return "";
   }
@@ -34,7 +108,7 @@ export function WithdrawModal({
 }: WithdrawModalProps) {
   const { address, chain } = useWallet();
   const votingPower = useVotingPower(address, BigInt(totalSupply));
-  const { withdrawalDelay } = useWithdrawals(address);
+  const withdrawalDelay = useWithdrawalDelay();
   const {
     withdraw,
     step,
@@ -48,19 +122,45 @@ export function WithdrawModal({
     reset,
   } = useWithdraw();
 
+  // Direct is always listed (disabled when 0) so the picker UI stays stable
+  // across wallets that have only direct, only staker, or both.
+  const availableSources = useMemo<
+    { source: WithdrawSource; power: bigint; label: string }[]
+  >(() => {
+    return [
+      {
+        source: { kind: "direct" },
+        power: votingPower.governancePower,
+        label: "Direct Deposit",
+      },
+      ...votingPower.stakerPowers
+        .filter((s) => s.power > 0n)
+        .map((s) => ({
+          source: { kind: "staker" as const, address: s.stakerAddress },
+          power: s.power,
+          label: `Staker ${truncateAddress(s.stakerAddress)}`,
+        })),
+    ];
+  }, [votingPower.governancePower, votingPower.stakerPowers]);
+
+  const [source, setSource] = useState<WithdrawSource>({ kind: "direct" });
   const [amountInput, setAmountInput] = useState("");
   const [phase, setPhase] = useState<"form" | "success">("form");
 
-  // Reset state when modal opens
+  // Default to the largest-power source so ATP-only users land on their Staker.
   useEffect(() => {
-    if (isOpen) {
-      setPhase("form");
-      setAmountInput("");
-      reset();
-    }
-  }, [isOpen, reset]);
+    if (!isOpen || votingPower.isLoading) return;
+    setPhase("form");
+    setAmountInput("");
+    reset();
+    const best = [...availableSources].sort((a, b) =>
+      a.power > b.power ? -1 : a.power < b.power ? 1 : 0
+    )[0];
+    if (best) setSource(best.source);
+    // availableSources is rebuilt each render; we watch its scalar inputs instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, votingPower.isLoading, votingPower.governancePower, votingPower.totalStakerPower]);
 
-  // Transition to success
   useEffect(() => {
     if (isSuccess && txHash) {
       onWithdrawSuccess?.();
@@ -72,7 +172,6 @@ export function WithdrawModal({
     onClose();
   }, [onClose]);
 
-  // Escape key
   useEffect(() => {
     if (!isOpen) return;
     function handleKey(e: KeyboardEvent) {
@@ -84,19 +183,36 @@ export function WithdrawModal({
 
   if (!isOpen) return null;
 
+  const selectedPower = (() => {
+    if (source.kind === "staker") {
+      return (
+        votingPower.stakerPowers.find(
+          (s) => s.stakerAddress === source.address
+        )?.power ?? 0n
+      );
+    }
+    return votingPower.governancePower;
+  })();
+
   const parsedAmount = parseAztAmount(amountInput);
   const isValidAmount =
-    parsedAmount !== null && parsedAmount <= votingPower.governancePower;
+    parsedAmount !== null && parsedAmount > 0n && parsedAmount <= selectedPower;
 
   const handleMax = () => {
-    setAmountInput(
-      formatWithCommas(bigintToRaw(votingPower.governancePower))
-    );
+    setAmountInput(formatWithCommas(bigintToRaw(selectedPower)));
+  };
+
+  const handleSourceChange = (next: WithdrawSource) => {
+    setSource(next);
+    // Reset so a value valid for the previous source isn't silently invalid here.
+    setAmountInput("");
   };
 
   const handleConfirm = () => {
     if (!parsedAmount || !isValidAmount || !address) return;
-    withdraw(parsedAmount, address);
+    const stakerAddress =
+      source.kind === "staker" ? source.address : undefined;
+    withdraw(parsedAmount, address, stakerAddress);
   };
 
   const explorerUrl =
@@ -104,6 +220,8 @@ export function WithdrawModal({
     (Number(process.env.NEXT_PUBLIC_CHAIN_ID || "11155111") === 1
       ? "https://etherscan.io"
       : "https://sepolia.etherscan.io");
+
+  const showPicker = availableSources.length > 1;
 
   return createPortal(
     <div
@@ -122,7 +240,6 @@ export function WithdrawModal({
       >
         {phase === "form" ? (
           <div className="p-6">
-            {/* Header */}
             <div className="flex items-center justify-between mb-4">
               <h2
                 className="text-base font-medium"
@@ -152,7 +269,6 @@ export function WithdrawModal({
               </button>
             </div>
 
-            {/* Divider */}
             <div
               className="h-px w-full mb-4"
               style={{ backgroundColor: "var(--border-default)" }}
@@ -160,11 +276,26 @@ export function WithdrawModal({
 
             {isPending ? (
               <>
-                {/* Compact summary */}
                 <div
                   className="p-4 mb-5 rounded-lg"
                   style={{ backgroundColor: "var(--background-subtle)" }}
                 >
+                  <div className="flex items-center justify-between mb-2">
+                    <span
+                      className="text-sm"
+                      style={{ color: "var(--text-secondary)" }}
+                    >
+                      Source
+                    </span>
+                    <span
+                      className="text-sm font-medium"
+                      style={{ color: "var(--text-primary)" }}
+                    >
+                      {source.kind === "direct"
+                        ? "Direct Deposit"
+                        : `Staker ${truncateAddress(source.address)}`}
+                    </span>
+                  </div>
                   <div className="flex items-center justify-between">
                     <span
                       className="text-sm"
@@ -181,7 +312,6 @@ export function WithdrawModal({
                   </div>
                 </div>
 
-                {/* Step message */}
                 <div className="flex items-center gap-3 mb-5">
                   <div
                     className="w-4 h-4 border-2 rounded-full animate-spin shrink-0"
@@ -198,7 +328,6 @@ export function WithdrawModal({
                   </span>
                 </div>
 
-                {/* Cancel button */}
                 <button
                   onClick={() => reset()}
                   className="w-full py-3.5 text-sm font-medium tracking-wider uppercase border cursor-pointer rounded"
@@ -213,7 +342,36 @@ export function WithdrawModal({
               </>
             ) : (
               <>
-                {/* Available balance */}
+                {showPicker && (
+                  <div className="mb-4">
+                    <label
+                      className="text-[10px] font-semibold tracking-widest uppercase mb-2 block"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      Withdraw From
+                    </label>
+                    <div
+                      className="border rounded-lg overflow-hidden"
+                      style={{ borderColor: "var(--border-default)" }}
+                    >
+                      {availableSources.map((entry, i) => {
+                        const key = sourceKey(entry.source);
+                        return (
+                          <SourcePickerButton
+                            key={key}
+                            label={entry.label}
+                            power={entry.power}
+                            selected={sourceKey(source) === key}
+                            disabled={entry.power === 0n}
+                            showDivider={i > 0}
+                            onSelect={() => handleSourceChange(entry.source)}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between mb-4">
                   <span
                     className="text-sm"
@@ -225,11 +383,10 @@ export function WithdrawModal({
                     className="text-sm font-medium"
                     style={{ color: "var(--text-primary)" }}
                   >
-                    {formatVotesWithUnit(votingPower.governancePower)}
+                    {formatVotesWithUnit(selectedPower)}
                   </span>
                 </div>
 
-                {/* Amount input */}
                 <div
                   className="flex items-center border h-10 px-3 rounded-lg mb-4"
                   style={{
@@ -254,15 +411,14 @@ export function WithdrawModal({
                   </button>
                 </div>
 
-                {parsedAmount !== null &&
-                  parsedAmount > votingPower.governancePower && (
-                    <p
-                      className="text-[10px] -mt-3 mb-4"
-                      style={{ color: "var(--accent-secondary)" }}
-                    >
-                      Exceeds available governance power
-                    </p>
-                  )}
+                {parsedAmount !== null && parsedAmount > selectedPower && (
+                  <p
+                    className="text-[10px] -mt-3 mb-4"
+                    style={{ color: "var(--accent-secondary)" }}
+                  >
+                    Exceeds available power for this source
+                  </p>
+                )}
 
                 {isError && (
                   <p
@@ -273,7 +429,6 @@ export function WithdrawModal({
                   </p>
                 )}
 
-                {/* Info callout */}
                 <div
                   className="px-3 py-2.5 rounded-lg mb-4"
                   style={{ backgroundColor: "var(--background-subtle)" }}
@@ -282,12 +437,15 @@ export function WithdrawModal({
                     className="text-xs leading-[18px]"
                     style={{ color: "var(--text-faint)" }}
                   >
-                    Your voting power will decrease immediately. Withdrawal
-                    delay: {withdrawalDelay ? formatDuration(withdrawalDelay) : "~15 days"}.
+                    {source.kind === "staker"
+                      ? "Funds will be released to your vault after the unlock period."
+                      : "Your voting power will decrease immediately."}
+                    {withdrawalDelay && (
+                      <> Withdrawal delay: {formatDuration(withdrawalDelay)}.</>
+                    )}
                   </p>
                 </div>
 
-                {/* Buttons */}
                 <div className="flex gap-3">
                   <button
                     onClick={handleClose}
@@ -318,7 +476,6 @@ export function WithdrawModal({
         ) : (
           /* Success phase */
           <div className="p-8 flex flex-col items-center">
-            {/* Teal checkmark */}
             <div
               className="w-16 h-16 rounded-full flex items-center justify-center mb-5 border-2"
               style={{
@@ -351,7 +508,6 @@ export function WithdrawModal({
               {formatWithCommas(amountInput) || "0"} AZT
             </p>
 
-            {/* Details */}
             <div className="w-full flex flex-col gap-2 mb-5 text-sm">
               {withdrawalId !== undefined && (
                 <div className="flex items-center justify-between">
@@ -362,7 +518,7 @@ export function WithdrawModal({
                     className="font-medium"
                     style={{ color: "var(--text-secondary)" }}
                   >
-                    #W-{withdrawalId.toString().padStart(3, "0")}
+                    #W-{withdrawalId.toString()}
                   </span>
                 </div>
               )}
@@ -394,7 +550,6 @@ export function WithdrawModal({
               )}
             </div>
 
-            {/* Transaction link */}
             {txHash && (
               <div
                 className="w-full flex items-center justify-between px-4 py-3 border rounded-lg mb-5"
@@ -418,7 +573,6 @@ export function WithdrawModal({
               </div>
             )}
 
-            {/* Done button */}
             <button
               onClick={handleClose}
               className="w-full py-3.5 text-sm font-medium tracking-wider uppercase cursor-pointer rounded"

@@ -27,22 +27,32 @@ function parseDevExtraStakers(): Address[] {
     .map((s) => getAddress(s));
 }
 
+function parseDevBeneficiaryOverride(): Address | undefined {
+  const raw = process.env.NEXT_PUBLIC_DEV_BENEFICIARY?.trim();
+  if (!raw || !isAddress(raw)) return undefined;
+  return getAddress(raw);
+}
+
 export function useUserStakers(
   address: Address | undefined
 ): UseUserStakersResult {
   const baseUrl = getIndexerBaseUrl();
   const extraStakers = parseDevExtraStakers();
-  const enabled = !!address && !!baseUrl;
+  // Dev-only override: query the indexer as a different beneficiary, useful
+  // for previewing another user's vault state without their private key.
+  const override = parseDevBeneficiaryOverride();
+  const lookupAddress = override ?? address;
+  const enabled = !!lookupAddress && !!baseUrl;
 
   const { data, isFetching, error } = useQuery<{
     stakers: Address[];
     holdings: ATPPosition[];
   }>({
-    queryKey: ["user-stakers", baseUrl ?? "", address ?? ""],
+    queryKey: ["user-stakers", baseUrl ?? "", lookupAddress ?? ""],
     enabled,
     staleTime: 60_000,
     queryFn: async ({ signal }) => {
-      const holdings = await fetchBeneficiaryHoldings(baseUrl!, address!, signal);
+      const holdings = await fetchBeneficiaryHoldings(baseUrl!, lookupAddress!, signal);
       const seen = new Set<string>();
       const stakers: Address[] = [];
       for (const h of holdings) {

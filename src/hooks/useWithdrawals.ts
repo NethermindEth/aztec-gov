@@ -1,174 +1,207 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
-import { parseAbiItem } from "viem";
+import { parseAbiItem, type Address, type PublicClient } from "viem";
 import { GovernanceAbi, governanceAddress } from "@/lib/contracts";
-import type { Address } from "viem";
 import { REFETCH_INTERVAL } from "@/lib/constants";
+
+interface WithdrawalRaw {
+  amount: bigint;
+  unlocksAt: bigint;
+  recipient: Address;
+  claimed: boolean;
+}
+
+interface GovernanceConfig {
+  proposeConfig: { lockDelay: bigint; lockAmount: bigint };
+  votingDelay: bigint;
+  votingDuration: bigint;
+  executionDelay: bigint;
+  gracePeriod: bigint;
+  quorum: bigint;
+  requiredYeaMargin: bigint;
+  minimumVotes: bigint;
+}
 
 export interface WithdrawalInfo {
   id: bigint;
   amount: bigint;
   unlocksAt: bigint;
-  recipient: string;
-  claimed: boolean;
+  recipient: Address;
+  claimed: false;
   status: "pending" | "ready";
 }
 
-const CHUNK_SIZE = 50_000n;
-const MAX_BLOCKS_BACK = 200_000n;
+interface UseWithdrawalsResult {
+  withdrawals: WithdrawalInfo[];
+  withdrawalDelay: bigint | undefined;
+  isLoading: boolean;
+  error: Error | null;
+  refetch: () => void;
+}
+
+// Under publicnode's 50k eth_getLogs cap; rejected chunks fall through as empty.
+const CHUNK_SIZE = 49_000n;
+// ~277 days at 12s blocks. Long-term fix is the indexer.
+const MAX_BLOCKS_BACK = 2_000_000n;
 
 const withdrawInitiatedEvent = parseAbiItem(
   "event WithdrawInitiated(uint256 indexed withdrawalId, address indexed recipient, uint256 amount)"
 );
 
-export function useWithdrawals(address: Address | undefined) {
+/**
+ * Withdrawal lock period, per `Governance.sol`:
+ *   `votingDelay/5 + votingDuration + executionDelay`
+ * The Configuration struct (canonical ABI) nests a `proposeConfig` tuple
+ * first, then the four Timestamp fields, then the uint256 amounts.
+ * Cached forever — governance config is effectively immutable.
+ */
+export function useWithdrawalDelay(): bigint | undefined {
   const publicClient = usePublicClient();
-  const [withdrawals, setWithdrawals] = useState<WithdrawalInfo[]>([]);
-  const [withdrawalDelay, setWithdrawalDelay] = useState<bigint | undefined>();
-  const [isLoading, setIsLoading] = useState(false);
-  const fetchIdRef = useRef(0);
-
-  const fetchWithdrawals = useCallback(async () => {
-    if (!address || !publicClient) {
-      setWithdrawals([]);
-      return;
-    }
-
-    const id = ++fetchIdRef.current;
-
-    try {
-      // Fetch governance config for withdrawal delay
-      const configResult = await publicClient.readContract({
+  const { data } = useQuery({
+    queryKey: ["governance-withdrawal-delay", governanceAddress],
+    enabled: !!publicClient,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    queryFn: async () => {
+      const cfg = (await publicClient!.readContract({
         address: governanceAddress,
         abi: GovernanceAbi,
         functionName: "getConfiguration",
-      });
+      })) as unknown as GovernanceConfig;
+      return cfg.votingDelay / 5n + cfg.votingDuration + cfg.executionDelay;
+    },
+  });
+  return data ?? undefined;
+}
 
-      if (id !== fetchIdRef.current) return;
+// Walks blocks in chunks and returns the set of withdrawalIds whose
+// recipient is in `recipients`. Failed chunks are treated as empty.
+async function scanWithdrawalIds(
+  client: PublicClient,
+  recipients: Address[],
+  lookback: bigint,
+  chunkSize: bigint
+): Promise<bigint[]> {
+  const blockNumber = await client.getBlockNumber();
+  const endBlock = blockNumber > lookback ? blockNumber - lookback : 0n;
+  const ids = new Set<bigint>();
 
-      const config = configResult as unknown as {
-        votingDelay: bigint;
-        votingDuration: bigint;
-        executionDelay: bigint;
-      };
-      const delay =
-        config.votingDelay / 5n +
-        config.votingDuration +
-        config.executionDelay;
-      setWithdrawalDelay(delay);
+  for (let toBlock = blockNumber; toBlock >= endBlock; toBlock -= chunkSize) {
+    const fromBlock =
+      toBlock - chunkSize + 1n < endBlock ? endBlock : toBlock - chunkSize + 1n;
 
-      // Scan WithdrawInitiated events filtered by recipient
-      const blockNumber = await publicClient.getBlockNumber();
-      const endBlock =
-        blockNumber > MAX_BLOCKS_BACK ? blockNumber - MAX_BLOCKS_BACK : 0n;
-
-      const allIds: bigint[] = [];
-
-      for (
-        let toBlock = blockNumber;
-        toBlock >= endBlock;
-        toBlock -= CHUNK_SIZE
-      ) {
-        if (id !== fetchIdRef.current) return;
-
-        const fromBlock =
-          toBlock - CHUNK_SIZE + 1n < endBlock
-            ? endBlock
-            : toBlock - CHUNK_SIZE + 1n;
-
-        try {
-          const logs = await publicClient.getLogs({
+    const perRecipient = await Promise.all(
+      recipients.map((r) =>
+        client
+          .getLogs({
             address: governanceAddress,
             event: withdrawInitiatedEvent,
-            args: { recipient: address },
+            args: { recipient: r },
             fromBlock,
             toBlock,
-          });
-
-          for (const log of logs) {
-            if (log.args.withdrawalId != null) {
-              allIds.push(log.args.withdrawalId);
-            }
-          }
-        } catch (chunkError) {
-          console.error(
-            `Error fetching withdrawal events chunk ${fromBlock}-${toBlock}:`,
-            chunkError
-          );
-        }
+          })
+          .catch((err) => {
+            console.warn(
+              `useWithdrawals: getLogs failed for ${fromBlock}-${toBlock}`,
+              err
+            );
+            return [];
+          })
+      )
+    );
+    for (const logs of perRecipient) {
+      for (const log of logs) {
+        if (log.args.withdrawalId != null) ids.add(log.args.withdrawalId);
       }
+    }
+  }
 
-      if (id !== fetchIdRef.current) return;
+  return Array.from(ids);
+}
 
-      if (allIds.length === 0) {
-        setWithdrawals([]);
-        setIsLoading(false);
-        return;
-      }
+// Multicalls getWithdrawal(id) for each id and filters by claimed=false +
+// recipient match.
+async function resolveWithdrawals(
+  client: PublicClient,
+  ids: bigint[],
+  recipientSet: Set<string>,
+  nowSec: bigint
+): Promise<WithdrawalInfo[]> {
+  if (ids.length === 0) return [];
 
-      // Deduplicate
-      const uniqueIds = [
-        ...new Set(allIds.map((i) => i.toString())),
-      ].map((i) => BigInt(i));
+  const results = await client.multicall({
+    contracts: ids.map((id) => ({
+      address: governanceAddress,
+      abi: GovernanceAbi,
+      functionName: "getWithdrawal" as const,
+      args: [id] as const,
+    })),
+    allowFailure: true,
+  });
 
-      // Multicall getWithdrawal for the user's withdrawal IDs only
-      const results = await publicClient.multicall({
-        contracts: uniqueIds.map((wId) => ({
-          address: governanceAddress,
-          abi: GovernanceAbi,
-          functionName: "getWithdrawal" as const,
-          args: [wId] as const,
-        })),
-      });
+  const out: WithdrawalInfo[] = [];
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (r.status !== "success" || !r.result) continue;
+    const w = r.result as unknown as WithdrawalRaw;
+    if (w.claimed) continue;
+    if (!recipientSet.has(w.recipient.toLowerCase())) continue;
+    out.push({
+      id: ids[i],
+      amount: w.amount,
+      unlocksAt: w.unlocksAt,
+      recipient: w.recipient,
+      claimed: false,
+      status: w.unlocksAt <= nowSec ? "ready" : "pending",
+    });
+  }
+  return out;
+}
 
-      if (id !== fetchIdRef.current) return;
+/**
+ * Unclaimed Governance withdrawals where `recipient` is one of `recipients`.
+ *
+ * ATP holders' withdrawals carry `recipient = atpAddress` (the Staker calls
+ * `Governance.initiateWithdraw(atp, ...)`), so the caller passes
+ * `[wallet, ...atpAddresses]` to surface both direct and ATP-routed entries.
+ */
+export function useWithdrawals(recipients: Address[]): UseWithdrawalsResult {
+  const publicClient = usePublicClient();
+  const withdrawalDelay = useWithdrawalDelay();
 
+  const normalizedRecipients = useMemo(() => {
+    const set = new Set(recipients.map((r) => r.toLowerCase()));
+    return Array.from(set).sort();
+  }, [recipients]);
+
+  const query = useQuery({
+    queryKey: ["governance-withdrawals", governanceAddress, normalizedRecipients],
+    enabled: !!publicClient && normalizedRecipients.length > 0,
+    refetchInterval: REFETCH_INTERVAL,
+    refetchIntervalInBackground: false,
+    queryFn: async (): Promise<WithdrawalInfo[]> => {
+      const ids = await scanWithdrawalIds(
+        publicClient!,
+        normalizedRecipients as Address[],
+        MAX_BLOCKS_BACK,
+        CHUNK_SIZE
+      );
+      const recipientSet = new Set(normalizedRecipients);
       const nowSec = BigInt(Math.floor(Date.now() / 1000));
-      const infos: WithdrawalInfo[] = [];
+      return resolveWithdrawals(publicClient!, ids, recipientSet, nowSec);
+    },
+  });
 
-      for (let i = 0; i < results.length; i++) {
-        const r = results[i];
-        if (r.status !== "success" || !r.result) continue;
-        const w = r.result as unknown as {
-          amount: bigint;
-          unlocksAt: bigint;
-          recipient: string;
-          claimed: boolean;
-        };
-        if (w.claimed) continue;
-        infos.push({
-          id: uniqueIds[i],
-          amount: w.amount,
-          unlocksAt: w.unlocksAt,
-          recipient: w.recipient,
-          claimed: w.claimed,
-          status: w.unlocksAt <= nowSec ? "ready" : "pending",
-        });
-      }
-
-      setWithdrawals(infos);
-    } catch (error) {
-      console.error("Failed to fetch withdrawals:", error);
-    } finally {
-      if (id === fetchIdRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, [address, publicClient]);
-
-  useEffect(() => {
-    if (!address) {
-      setWithdrawals([]);
-      return;
-    }
-
-    setIsLoading(true);
-    fetchWithdrawals();
-    const interval = setInterval(fetchWithdrawals, REFETCH_INTERVAL);
-    return () => clearInterval(interval);
-  }, [address, fetchWithdrawals]);
-
-  return { withdrawals, withdrawalDelay, isLoading, refetch: fetchWithdrawals };
+  return {
+    withdrawals: query.data ?? [],
+    withdrawalDelay,
+    isLoading: query.isLoading,
+    error: query.error,
+    refetch: () => {
+      query.refetch();
+    },
+  };
 }
