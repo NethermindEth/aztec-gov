@@ -1,5 +1,6 @@
 import type { Status } from "@/components/ui/StatusBadge";
 import { ProposalState } from "./governance";
+import { chainId } from "./config";
 
 export function mapStateToStatus(state: ProposalState): Status {
   switch (state) {
@@ -135,7 +136,6 @@ export function formatDelayFromTimestamp(unlocksAt: bigint): string {
 }
 
 export function getExplorerUrl(): string {
-  const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "11155111");
   if (chainId === 1) return "https://etherscan.io";
   return "https://sepolia.etherscan.io";
 }
