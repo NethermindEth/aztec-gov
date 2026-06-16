@@ -10,6 +10,7 @@ import { useMaxAmount } from "@/hooks/useMaxAmount";
 import { ModalShell, ModalCloseButton } from "./ModalShell";
 import { SourcePickerButton } from "./SourcePickerButton";
 import { MaxAmountInput } from "./MaxAmountInput";
+import { TransactionFailedScreen } from "./TransactionFailedScreen";
 import {
   formatVotesWithUnit,
   formatDateFull,
@@ -89,7 +90,7 @@ export function WithdrawModal({
   }, [votingPower.governancePower, votingPower.stakerPowers]);
 
   const [source, setSource] = useState<WithdrawSource>({ kind: "direct" });
-  const [phase, setPhase] = useState<"form" | "success">("form");
+  const [phase, setPhase] = useState<"form" | "success" | "failed">("form");
   const hasInitialized = useRef(false);
 
   const selectedPower =
@@ -143,6 +144,10 @@ export function WithdrawModal({
       setPhase("success");
     }
   }, [isSuccess, txHash, onWithdrawSuccess]);
+
+  useEffect(() => {
+    if (isError) setPhase("failed");
+  }, [isError]);
 
   const handleClose = useCallback(() => {
     onClose();
@@ -315,7 +320,7 @@ export function WithdrawModal({
                 onMax={handleMax}
                 overflow={parsedAmount !== null && parsedAmount > selectedPower}
                 overflowMessage="Exceeds available power for this source"
-                txError={isError ? error?.message || "Transaction failed" : null}
+                txError={null}
               />
 
               <div
@@ -362,7 +367,7 @@ export function WithdrawModal({
             </>
           )}
         </div>
-      ) : (
+      ) : phase === "success" ? (
         /* Success phase */
         <div className="p-8 flex flex-col items-center">
           <div
@@ -498,6 +503,15 @@ export function WithdrawModal({
             Done
           </button>
         </div>
+      ) : (
+        <TransactionFailedScreen
+          message={error?.message || "Transaction failed"}
+          onRetry={() => {
+            reset();
+            setPhase("form");
+          }}
+          onClose={handleClose}
+        />
       )}
     </ModalShell>
   );

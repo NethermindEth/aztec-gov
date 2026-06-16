@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useWallet } from "@/hooks/useWallet";
 import { useVotingPower } from "@/hooks/useVotingPower";
 import { useVote, type VoteStep } from "@/hooks/useVote";
+import { TransactionFailedScreen } from "@/components/governance/TransactionFailedScreen";
 import { formatVotesWithUnit, getExplorerUrl, parseAztAmount, bigintToRaw, formatWithCommas, truncateAddress } from "@/lib/format";
 import type { Address, Hex } from "viem";
 
@@ -22,7 +23,8 @@ function sourceKey(source: VoteSource): string {
 type ModalPhase =
   | { kind: "editing" }
   | { kind: "submitting"; step: VoteStep }
-  | { kind: "success"; txHash: Hex };
+  | { kind: "success"; txHash: Hex }
+  | { kind: "failed"; message: string };
 
 interface ModalState {
   phase: ModalPhase;
@@ -30,7 +32,6 @@ interface ModalState {
   source: VoteSource;
   amountInput: string;
   initialized: boolean;
-  error?: string;
 }
 
 type ModalAction =
@@ -80,7 +81,6 @@ function reducer(state: ModalState, action: ModalAction): ModalState {
       return {
         ...state,
         phase: { kind: "submitting", step: "voting" },
-        error: undefined,
       };
     case "TX_STEP":
       if (state.phase.kind !== "submitting") return state;
@@ -88,7 +88,7 @@ function reducer(state: ModalState, action: ModalAction): ModalState {
     case "TX_SUCCESS":
       return { ...state, phase: { kind: "success", txHash: action.txHash } };
     case "TX_FAILED":
-      return { ...state, phase: { kind: "editing" }, error: action.message };
+      return { ...state, phase: { kind: "failed", message: action.message } };
     case "CANCEL_SUBMIT":
       return { ...state, phase: { kind: "editing" } };
     default:
@@ -297,7 +297,7 @@ export function VoteModal({
     initialSupport,
     makeInitialState
   );
-  const { support, source, amountInput, phase, error: localError } = state;
+  const { support, source, amountInput, phase } = state;
   const isSubmitting = phase.kind === "submitting";
   const currentStep: VoteStep = isSubmitting ? phase.step : "idle";
 
@@ -476,7 +476,7 @@ export function VoteModal({
           borderColor: "var(--border-default)",
         }}
       >
-        {phase.kind !== "success" ? (
+        {phase.kind === "editing" || phase.kind === "submitting" ? (
           <div className="p-6">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
@@ -809,14 +809,6 @@ export function VoteModal({
                         Exceeds available voting power
                       </p>
                     )}
-                  {localError && (
-                    <p
-                      className="text-[10px] mt-1"
-                      style={{ color: "var(--accent-secondary)" }}
-                    >
-                      {localError}
-                    </p>
-                  )}
                 </div>
 
                 {/* Deposit info box */}
@@ -919,7 +911,7 @@ export function VoteModal({
               </>
             )}
           </div>
-        ) : (
+        ) : phase.kind === "success" ? (
           /* Success phase */
           <div className="p-6 flex flex-col items-center">
             {/* Checkmark */}
@@ -1080,6 +1072,15 @@ export function VoteModal({
               Close
             </button>
           </div>
+        ) : (
+          <TransactionFailedScreen
+            message={phase.kind === "failed" ? phase.message : "Transaction failed"}
+            onRetry={() => {
+              reset();
+              dispatch({ type: "CANCEL_SUBMIT" });
+            }}
+            onClose={handleClose}
+          />
         )}
       </div>
     </div>,
