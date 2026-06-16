@@ -71,7 +71,7 @@ test.describe("WithdrawModal", () => {
       expect(powerBefore).toBeGreaterThan(10n ** 18n);
 
       await page.getByRole("button", { name: /^max$/i }).click();
-      const input = page.locator('input[placeholder="Enter amount"]');
+      const input = page.locator('input[placeholder="0"]');
       expect(await input.inputValue()).not.toBe("");
       await input.fill("0.5");
 
@@ -92,7 +92,7 @@ test.describe("WithdrawModal", () => {
 
   test("amount > available shows error and disables submit", async ({ page }) => {
     await openWithdrawModal(page);
-    const input = page.locator('input[placeholder="Enter amount"]');
+    const input = page.locator('input[placeholder="0"]');
     await input.fill("999999999");
     const dialog = page.getByRole("dialog", { name: /withdraw from position/i });
     await expect(dialog.getByText(/exceeds available power/i)).toBeVisible();
