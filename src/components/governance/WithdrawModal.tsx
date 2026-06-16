@@ -439,6 +439,31 @@ export function WithdrawModal({
             )}
           </div>
 
+          {/* Two-step withdrawal: surface the Claim step so tokens aren't left unclaimed. */}
+          <div
+            className="w-full px-4 py-3 border rounded-lg mb-5 text-left"
+            style={{
+              borderColor: "var(--border-default)",
+              backgroundColor: "var(--background-subtle)",
+            }}
+          >
+            <p
+              className="text-xs font-medium mb-1"
+              style={{ color: "var(--text-primary)" }}
+            >
+              One more step to get your tokens
+            </p>
+            <p
+              className="text-xs leading-relaxed"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              Withdrawing is a two-step process. Come back to this dashboard
+              once it unlocks and click Claim on this withdrawal to
+              receive your tokens. Until you do, they stay in the governance
+              contract.
+            </p>
+          </div>
+
           {txHash && (
             <div
               className="w-full flex items-center justify-between px-4 py-3 border rounded-lg mb-5"
