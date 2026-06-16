@@ -1,5 +1,10 @@
-import { createPublicClient, defineChain, http, isAddress, type Address, type Chain } from "viem";
+import { createPublicClient, defineChain, http, type Chain } from "viem";
 import { mainnet, sepolia, foundry as foundryBase } from "viem/chains";
+import { chainId } from "./config";
+
+// Contract addresses are validated in ./config (throws at load if missing).
+// Re-exported here so existing `@/lib/contracts` import sites keep working.
+export { governanceAddress, stakingAssetAddress, gseAddress } from "./config";
 
 // viem's foundry chain doesn't declare multicall3 — inject the canonical
 // address so publicClient.multicall works against a local anvil where we've
@@ -387,50 +392,30 @@ const CHAINS: Record<number, Chain> = {
   31337: foundry,
 };
 
-const rawChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "11155111");
-const chainId = (() => {
-  if (CHAINS[rawChainId]) return rawChainId;
-  console.warn(
-    `[Aztec Gov] NEXT_PUBLIC_CHAIN_ID=${rawChainId} is not supported (supported: ${Object.keys(CHAINS).join(", ")}). Defaulting to Sepolia.`
-  );
-  return 11155111;
-})();
-
 const PUBLIC_FALLBACK_RPC: Record<number, string> = {
   1: "https://ethereum-rpc.publicnode.com",
   11155111: "https://ethereum-sepolia-rpc.publicnode.com",
   31337: "http://127.0.0.1:8545",
 };
 
+// RPC_URL is server-only (the browser reaches the chain through the proxy), so
+// it can't live in ./config without throwing on every client load. In
+// production the public fallback drops connections under load, so require an
+// explicit RPC_URL on the server. Dev, fork tests and e2e keep the fallback.
+if (
+  typeof window === "undefined" &&
+  process.env.NODE_ENV === "production" &&
+  !process.env.RPC_URL
+) {
+  throw new Error(
+    "RPC_URL is not set. Set it in the deploy environment; the public RPC fallback is not reliable under load."
+  );
+}
+
 const rpcUrl =
   process.env.RPC_URL ||
   PUBLIC_FALLBACK_RPC[chainId] ||
   "https://ethereum-rpc.publicnode.com";
-
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
-
-function validateAddress(value: string | undefined, name: string): Address {
-  const raw = value || "";
-  if (!raw) {
-    console.warn(`[Aztec Gov] ${name} not configured — set it in .env`);
-    return ZERO_ADDRESS;
-  }
-  if (!isAddress(raw)) {
-    console.warn(`[Aztec Gov] ${name} is not a valid Ethereum address: ${raw}`);
-    return ZERO_ADDRESS;
-  }
-  return raw as Address;
-}
-
-export const governanceAddress = validateAddress(
-  process.env.NEXT_PUBLIC_GOVERNANCE_ADDRESS, "NEXT_PUBLIC_GOVERNANCE_ADDRESS"
-);
-export const stakingAssetAddress = validateAddress(
-  process.env.NEXT_PUBLIC_STAKING_ASSET_ADDRESS, "NEXT_PUBLIC_STAKING_ASSET_ADDRESS"
-);
-export const gseAddress = validateAddress(
-  process.env.NEXT_PUBLIC_GSE_ADDRESS, "NEXT_PUBLIC_GSE_ADDRESS"
-);
 
 export const publicClient = createPublicClient({
   chain: CHAINS[chainId] || sepolia,

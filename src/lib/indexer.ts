@@ -1,4 +1,5 @@
 import type { Address } from "viem";
+import { indexerUrl } from "./config";
 
 export interface ATPPosition {
   address: Address;
@@ -21,10 +22,10 @@ export class IndexerError extends Error {
   }
 }
 
-export function getIndexerBaseUrl(): string | undefined {
-  const url = process.env.NEXT_PUBLIC_STAKING_INDEXER_URL;
-  if (!url || url.trim().length === 0) return undefined;
-  return url.trim().replace(/\/+$/, "");
+// Required and validated in ./config (throws at load if unset), so this is
+// always a usable base URL.
+export function getIndexerBaseUrl(): string {
+  return indexerUrl;
 }
 
 export async function fetchBeneficiaryHoldings(

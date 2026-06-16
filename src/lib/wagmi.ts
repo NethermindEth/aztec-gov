@@ -7,6 +7,7 @@ import { connect as wagmiConnect, disconnect as wagmiDisconnect } from "wagmi/ac
 import type { Config } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { connectorsForWallets } from "@rainbow-me/rainbowkit";
+import { chainId } from "./config";
 import {
   metaMaskWallet,
   rainbowWallet,
@@ -29,7 +30,6 @@ const WALLETCONNECT_PROJECT_ID =
   process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
 
 export function getChains(): readonly [Chain, ...Chain[]] {
-  const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "11155111");
   switch (chainId) {
     case 1:
       return [mainnet];

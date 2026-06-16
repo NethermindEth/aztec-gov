@@ -33,4 +33,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "yarn"
       - run: yarn install --frozen-lockfile
+      # config.ts validates required config at load and fails the build if any
+      # is missing (see #27). These are all public mainnet values, no secrets;
+      # the build renders pages dynamically so the RPC is never actually called.
       - run: yarn build
+        env:
+          NEXT_PUBLIC_GOVERNANCE_ADDRESS: "0x1102471eb3378fee427121c9efcea452e4b6b75e"
+          NEXT_PUBLIC_STAKING_ASSET_ADDRESS: "0xa27ec0006e59f245217ff08cd52a7e8b169e62d2"
+          NEXT_PUBLIC_GSE_ADDRESS: "0xa92ecfd0e70c9cd5e5cd76c50af0f7da93567a4f"
+          NEXT_PUBLIC_CHAIN_ID: "1"
+          NEXT_PUBLIC_STAKING_INDEXER_URL: "https://dgk9duhuxabbq.cloudfront.net"
+          RPC_URL: "https://ethereum-rpc.publicnode.com"
