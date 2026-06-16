@@ -29,6 +29,7 @@ interface VotingPowerResult {
   supplyPercentage: number;
   isLoading: boolean;
   indexerError?: Error;
+  refetch: () => void;
 }
 
 const ZERO: VotingPowerResult = {
@@ -40,6 +41,7 @@ const ZERO: VotingPowerResult = {
   totalVotingPower: 0n,
   supplyPercentage: 0,
   isLoading: false,
+  refetch: () => {},
 };
 
 export function useVotingPower(
@@ -50,6 +52,7 @@ export function useVotingPower(
     stakers,
     isLoading: stakersLoading,
     error: stakersError,
+    refetch,
   } = useUserStakers(address);
 
   const contracts = useMemo(() => {
@@ -94,8 +97,9 @@ export function useVotingPower(
   if (!address) return ZERO;
 
   const loading = isLoading || stakersLoading;
-  if (loading) return { ...ZERO, isLoading: true, indexerError: stakersError };
-  if (!data) return { ...ZERO, indexerError: stakersError };
+  if (loading)
+    return { ...ZERO, isLoading: true, indexerError: stakersError, refetch };
+  if (!data) return { ...ZERO, indexerError: stakersError, refetch };
 
   const walletBalance = (data[0]?.result as bigint | undefined) ?? 0n;
   const governancePower = (data[1]?.result as bigint | undefined) ?? 0n;
@@ -126,5 +130,6 @@ export function useVotingPower(
     supplyPercentage,
     isLoading: false,
     indexerError: stakersError,
+    refetch,
   };
 }

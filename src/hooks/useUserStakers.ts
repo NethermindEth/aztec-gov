@@ -13,6 +13,7 @@ interface UseUserStakersResult {
   holdings: ATPPosition[];
   isLoading: boolean;
   error?: Error;
+  refetch: () => void;
 }
 
 const EMPTY_HOLDINGS: ATPPosition[] = [];
@@ -44,7 +45,7 @@ export function useUserStakers(
   const lookupAddress = override ?? address;
   const enabled = !!lookupAddress && !!baseUrl;
 
-  const { data, isFetching, error } = useQuery<{
+  const { data, isFetching, error, refetch } = useQuery<{
     stakers: Address[];
     holdings: ATPPosition[];
   }>({
@@ -81,5 +82,8 @@ export function useUserStakers(
     holdings: data?.holdings ?? EMPTY_HOLDINGS,
     isLoading: enabled && isFetching,
     error: error ?? undefined,
+    refetch: () => {
+      refetch();
+    },
   };
 }
