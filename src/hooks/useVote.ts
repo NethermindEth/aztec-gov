@@ -11,7 +11,7 @@ import {
   stakingAssetAddress,
 } from "@/lib/contracts";
 import { type Address, walletActions } from "viem";
-import { TX_RECEIPT_TIMEOUT } from "@/lib/constants";
+import { waitForSuccessfulReceipt } from "@/lib/tx";
 import { sanitizeTransactionError } from "@/lib/format";
 
 export type VoteStep =
@@ -79,7 +79,7 @@ export function useVote() {
           if (abortRef.current) return;
 
           setStep("waiting-approve");
-          await publicClient.waitForTransactionReceipt({ hash: approveTx, timeout: TX_RECEIPT_TIMEOUT });
+          await waitForSuccessfulReceipt(publicClient, approveTx);
           if (abortRef.current) return;
 
           // Step 2: Deposit
@@ -94,7 +94,7 @@ export function useVote() {
           if (abortRef.current) return;
 
           setStep("waiting-deposit");
-          await publicClient.waitForTransactionReceipt({ hash: depositTx, timeout: TX_RECEIPT_TIMEOUT });
+          await waitForSuccessfulReceipt(publicClient, depositTx);
           if (abortRef.current) return;
         }
 
@@ -117,6 +117,10 @@ export function useVote() {
             });
         if (abortRef.current) return;
 
+        setStep("waiting-vote");
+        await waitForSuccessfulReceipt(publicClient, voteTxHash);
+        if (abortRef.current) return;
+
         setFinalTxHash(voteTxHash);
         setStep("success");
       } catch (err) {
@@ -126,7 +130,7 @@ export function useVote() {
         }
       }
     },
-    [connector, chain, config]
+    [connector, chain, config, publicClient]
   );
 
   const reset = useCallback(() => {

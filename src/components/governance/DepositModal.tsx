@@ -12,6 +12,7 @@ import { useMaxAmount } from "@/hooks/useMaxAmount";
 import { ModalShell, ModalCloseButton } from "./ModalShell";
 import { SourcePickerButton } from "./SourcePickerButton";
 import { MaxAmountInput } from "./MaxAmountInput";
+import { TransactionFailedScreen } from "./TransactionFailedScreen";
 import {
   ERC20Abi,
   governanceAddress,
@@ -259,7 +260,7 @@ export function DepositModal({
   }, [votingPower.walletBalance, holdings, atpBalances, atpOperators, address]);
 
   const [source, setSource] = useState<DepositSource>({ kind: "direct" });
-  const [phase, setPhase] = useState<"form" | "success">("form");
+  const [phase, setPhase] = useState<"form" | "success" | "failed">("form");
   const hasInitialized = useRef(false);
 
   const selectedPower = useMemo(() => {
@@ -338,6 +339,10 @@ export function DepositModal({
       setPhase("success");
     }
   }, [isSuccess, txHash, onDepositSuccess]);
+
+  useEffect(() => {
+    if (isError) setPhase("failed");
+  }, [isError]);
 
   const handleClose = useCallback(() => {
     onClose();
@@ -523,7 +528,7 @@ export function DepositModal({
                 onMax={handleMax}
                 overflow={parsedAmount !== null && parsedAmount > selectedPower}
                 overflowMessage="Exceeds available balance for this source"
-                txError={isError ? error?.message || "Transaction failed" : null}
+                txError={null}
               />
 
               {/* Confirm button */}
@@ -541,7 +546,7 @@ export function DepositModal({
             </>
           )}
         </div>
-      ) : (
+      ) : phase === "success" ? (
         /* Success phase */
         <div className="p-6 flex flex-col items-center">
           {/* Checkmark */}
@@ -646,6 +651,15 @@ export function DepositModal({
             Close
           </button>
         </div>
+      ) : (
+        <TransactionFailedScreen
+          message={error?.message || "Transaction failed"}
+          onRetry={() => {
+            reset();
+            setPhase("form");
+          }}
+          onClose={handleClose}
+        />
       )}
     </ModalShell>
   );

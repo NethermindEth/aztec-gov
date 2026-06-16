@@ -12,7 +12,7 @@ import {
   stakingAssetAddress,
 } from "@/lib/contracts";
 import { type Address, walletActions } from "viem";
-import { TX_RECEIPT_TIMEOUT } from "@/lib/constants";
+import { waitForSuccessfulReceipt } from "@/lib/tx";
 import { sanitizeTransactionError } from "@/lib/format";
 
 export type DepositStep =
@@ -94,7 +94,7 @@ export function useDeposit() {
           if (abortRef.current) return;
 
           setStep("waiting-approve");
-          await publicClient.waitForTransactionReceipt({ hash: approveTx, timeout: TX_RECEIPT_TIMEOUT });
+          await waitForSuccessfulReceipt(publicClient, approveTx);
           if (abortRef.current) return;
         }
 
@@ -120,7 +120,7 @@ export function useDeposit() {
         if (abortRef.current) return;
 
         setStep("waiting-deposit");
-        await publicClient.waitForTransactionReceipt({ hash: depositTx, timeout: TX_RECEIPT_TIMEOUT });
+        await waitForSuccessfulReceipt(publicClient, depositTx);
         if (abortRef.current) return;
 
         setFinalTxHash(depositTx);

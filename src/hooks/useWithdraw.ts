@@ -5,7 +5,7 @@ import { useAccount, useConfig, usePublicClient } from "wagmi";
 import { getConnectorClient } from "@wagmi/core";
 import { GovernanceAbi, StakerAbi, governanceAddress } from "@/lib/contracts";
 import { type Address, walletActions, parseEventLogs } from "viem";
-import { TX_RECEIPT_TIMEOUT } from "@/lib/constants";
+import { waitForSuccessfulReceipt } from "@/lib/tx";
 import { sanitizeTransactionError } from "@/lib/format";
 
 export type WithdrawStep =
@@ -76,10 +76,7 @@ export function useWithdraw() {
         if (abortRef.current) return;
 
         setStep("waiting");
-        const receipt = await publicClient.waitForTransactionReceipt({
-          hash: txHash,
-          timeout: TX_RECEIPT_TIMEOUT,
-        });
+        const receipt = await waitForSuccessfulReceipt(publicClient, txHash);
         if (abortRef.current) return;
 
         const logs = parseEventLogs({
