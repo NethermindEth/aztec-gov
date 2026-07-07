@@ -45,11 +45,8 @@ function requireChainId(name: string, raw: string | undefined): number {
   return n;
 }
 
-function requireUrl(name: string, raw: string | undefined): string {
-  if (!raw || raw.trim().length === 0) {
-    problems.push(`${name} is not set`);
-    return "";
-  }
+function optionalUrl(raw: string | undefined): string {
+  if (!raw || raw.trim().length === 0) return "";
   return raw.trim().replace(/\/+$/, "");
 }
 
@@ -69,10 +66,7 @@ export const chainId = requireChainId(
   "NEXT_PUBLIC_CHAIN_ID",
   process.env.NEXT_PUBLIC_CHAIN_ID
 );
-export const indexerUrl = requireUrl(
-  "NEXT_PUBLIC_STAKING_INDEXER_URL",
-  process.env.NEXT_PUBLIC_STAKING_INDEXER_URL
-);
+export const indexerUrl = optionalUrl(process.env.NEXT_PUBLIC_STAKING_INDEXER_URL);
 
 if (problems.length > 0) {
   throw new Error(

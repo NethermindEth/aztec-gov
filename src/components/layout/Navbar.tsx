@@ -31,23 +31,54 @@ export function Navbar({ activeLink = "GOVERNANCE" }: NavbarProps) {
         <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 h-full">
           <div className="flex items-center justify-between h-full">
             {/* Logo */}
-            <Link href="/" className="flex items-center">
-              {/* Mobile: text logo */}
+            <div className="flex items-center gap-3 md:gap-4">
+              <Link href="/" className="flex items-center">
+                {/* Mobile: text logo */}
+                <span
+                  className="md:hidden text-lg font-medium tracking-wider"
+                  style={{ color: "var(--accent-primary)" }}
+                >
+                  AZTEC
+                </span>
+                {/* Desktop: image logo */}
+                <img
+                  className="hidden md:block"
+                  src="/aztec-logo.svg"
+                  alt="Aztec"
+                  height={32}
+                  width={125}
+                />
+              </Link>
+
+              {/* Divider */}
               <span
-                className="md:hidden text-lg font-medium tracking-wider"
-                style={{ color: "var(--accent-primary)" }}
-              >
-                AZTEC
-              </span>
-              {/* Desktop: image logo */}
-              <img
-                className="hidden md:block"
-                src="/aztec-logo.svg"
-                alt="Aztec"
-                height={32}
-                width={125}
+                className="block w-px h-5"
+                style={{ backgroundColor: "var(--border-default)" }}
               />
-            </Link>
+
+              {/* Nethermind logo */}
+              <a
+                href="https://www.nethermind.io"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center hover:opacity-70 transition-opacity"
+              >
+                <img
+                  src="/nethermind-logo.svg"
+                  alt="Nethermind"
+                  height={14}
+                  width={100}
+                  className="md:hidden"
+                />
+                <img
+                  src="/nethermind-logo.svg"
+                  alt="Nethermind"
+                  height={17}
+                  width={120}
+                  className="hidden md:block"
+                />
+              </a>
+            </div>
 
             {/* Desktop nav links + wallet */}
             <nav className="hidden md:flex items-center space-x-6 lg:space-x-8">
