@@ -14,7 +14,6 @@ import {
   formatVotesWithUnit,
   formatDateFull,
   formatDate,
-  truncateAddress,
   getSummaryText,
 } from "./format";
 import type { ProposalDetailView, LifecycleStep, ProposalView, ProposalsPageData, GitHubInfo } from "./types";
