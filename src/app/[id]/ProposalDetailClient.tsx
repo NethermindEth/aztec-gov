@@ -19,6 +19,8 @@ import { ForumReference } from "@/components/governance/ForumReference";
 import { VoteModal } from "@/components/governance/VoteModal";
 import { DepositModal } from "@/components/governance/DepositModal";
 import { getForumUrl } from "@/lib/forum";
+import { ProposalNotFoundError } from "@/lib/errors";
+import { RetryButton } from "@/components/ui/RetryButton";
 
 interface ProposalDetailClientProps {
   id: number;
@@ -26,7 +28,7 @@ interface ProposalDetailClientProps {
 }
 
 export function ProposalDetailClient({ id, initialData }: ProposalDetailClientProps) {
-  const { data: p, isLoading, isError, error, isFetching, refetch } =
+  const { data: p, isLoading, isError, error, refetch } =
     useProposalQuery(id, initialData);
   const invalidateProposal = useInvalidateProposal();
   const invalidateUserData = useInvalidateUserData();
@@ -84,10 +86,8 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
   }
 
   if (isError || !p) {
-    // useProposalQuery throws "Proposal not found" for a nonexistent id;
-    // anything else is a transport failure, which gets a retry instead of
-    // masquerading as a missing proposal.
-    const notFound = (error as Error | null)?.message === "Proposal not found";
+    // A nonexistent id is typed; anything else is transport and gets a retry.
+    const notFound = error instanceof ProposalNotFoundError;
     return (
       <div
         className="flex flex-col min-h-screen overflow-x-hidden"
@@ -100,20 +100,7 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
               ? "Proposal not found."
               : "Couldn't load this proposal. Check your connection and try again."}
           </p>
-          {!notFound && (
-            <button
-              onClick={() => refetch()}
-              disabled={isFetching}
-              className="mt-4 px-4 py-1.5 text-xs font-semibold tracking-wider uppercase border cursor-pointer disabled:opacity-60 disabled:cursor-default"
-              style={{
-                borderColor: "var(--text-primary)",
-                color: "var(--text-primary)",
-                backgroundColor: "transparent",
-              }}
-            >
-              {isFetching ? "Retrying..." : "Retry"}
-            </button>
-          )}
+          {!notFound && <RetryButton onRetry={refetch} className="mt-4" />}
         </main>
         <Footer />
       </div>

@@ -2,9 +2,7 @@
 
 import { useEffect } from "react";
 
-// Replaces the root layout when it crashes, so globals.css and the theme
-// variables may not be loaded; colors are inlined. Error reporting (Sentry
-// or similar) would hook in here.
+// Replaces the crashed root layout, so theme CSS may be absent; colors are inlined. Error reporting hooks in here.
 export default function GlobalError({
   error,
   reset,

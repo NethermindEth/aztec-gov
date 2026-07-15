@@ -122,8 +122,7 @@ async function fetchExecutionTxHash(
       return logs[0].transactionHash;
     }
   } catch (error) {
-    // Deliberate degradation: the execution link is decorative, so a failed
-    // lookup drops the link rather than failing the whole proposal fetch.
+    // Deliberate degradation: the Etherscan link is decorative, so drop it rather than fail the fetch.
     console.error(`Failed to fetch execution tx for proposal ${proposalId}:`, error);
   }
   return undefined;
@@ -266,14 +265,8 @@ export async function fetchProposalPage(
   }));
 }
 
-/**
- * Fetch a single proposal with its state and total power.
- * Uses 1 multicall + 1 single call (for URI).
- *
- * Returns proposal: null only when the id genuinely doesn't exist (the
- * getProposal call reverts inside a successful multicall). Transport errors
- * propagate — swallowing them here used to surface as a false 404.
- */
+// Single-proposal fetch (1 multicall + 1 URI call). proposal is null only for
+// a nonexistent id; transport errors propagate (swallowed ones read as false 404s).
 export async function fetchProposalByIdWithPower(
   id: number
 ): Promise<{ proposal: Proposal | null; totalPower: bigint }> {

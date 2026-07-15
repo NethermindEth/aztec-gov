@@ -6,6 +6,7 @@ import { useWallet } from "@/hooks/useWallet";
 import { useVotingPower } from "@/hooks/useVotingPower";
 import { useWithdrawals, type WithdrawalInfo } from "@/hooks/useWithdrawals";
 import { useUserStakers } from "@/hooks/useUserStakers";
+import { WarningBanner } from "@/components/ui/WarningBanner";
 import { useATPBalances } from "@/hooks/useATPBalances";
 import { useFinalizeWithdraw } from "@/hooks/useFinalizeWithdraw";
 import { formatVotesWithUnit, formatTimeRemaining, sanitizeTransactionError, formatDuration } from "@/lib/format";
@@ -30,7 +31,7 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
     indexerError,
     refetch,
   } = useVotingPower(address, supply);
-  const { holdings } = useUserStakers(address);
+  const { holdings, discoveryIncomplete } = useUserStakers(address);
   const recipients = useMemo<Address[]>(() => {
     const atps = holdings.map((h) => h.address);
     return address ? [address, ...atps] : atps;
@@ -59,7 +60,6 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
     withdrawals,
     withdrawalDelay,
     isLoading: withdrawalsLoading,
-    isFetching: withdrawalsFetching,
     scanIncomplete,
     error: withdrawalsError,
     refetch: refetchWithdrawals,
@@ -119,16 +119,11 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
         </div>
       </div>
 
-      {/* Staker discovery is indexer-only. When that lookup fails, staker
-         power silently reads 0, so the figure above can understate the real
-         on-chain power. Surface it with a retry instead of showing a bare 0.
-         While the staker query re-fetches, `isLoading` is true with the error
-         still set, so the button doubles as the retry-in-flight indicator. */}
-      {indexerError && (
+      {/* Failed or fallback-based staker discovery understates power and can hide vault withdrawals; warn once here. */}
+      {(indexerError || discoveryIncomplete) && (
         <WarningBanner
-          message="Couldn't load your staking positions, so voting power may be understated."
+          message="Couldn't fully load your staking positions, so voting power and vault withdrawals may be incomplete."
           onRetry={refetch}
-          retrying={isLoading}
         />
       )}
 
@@ -293,62 +288,13 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
         </div>
       )}
 
-      {/* Discovery failed on both the indexer and the on-chain fallback, so any
-         vault-routed withdrawal can't be listed. Warn with a Retry instead of
-         letting the section vanish silently (mirrors the voting-power card).
-         Gated on the error alone so it persists while the retry is in flight. */}
-      {indexerError && (
-        <WarningBanner
-          message="Couldn't load your vault positions, so any withdrawals routed through them may not appear here."
-          onRetry={refetch}
-          retrying={isLoading}
-        />
-      )}
-
-      {/* The log scan dropped a block window (scanIncomplete) or failed
-         outright (withdrawalsError), so rows may be missing even though the
-         recipient set was resolved fine. Separate retry from the indexer
-         banner: this refetches the scan, not staker discovery. */}
+      {/* Scan-level gaps have their own retry: refetching the scan, not staker discovery. */}
       {(scanIncomplete || !!withdrawalsError) && (
         <WarningBanner
           message="Part of the withdrawal history scan failed, so this list may be incomplete."
           onRetry={refetchWithdrawals}
-          retrying={withdrawalsFetching}
         />
       )}
-    </div>
-  );
-}
-
-function WarningBanner({
-  message,
-  onRetry,
-  retrying,
-}: {
-  message: string;
-  onRetry: () => void;
-  retrying?: boolean;
-}) {
-  return (
-    <div
-      className="flex items-center justify-between gap-3 mx-4 md:mx-6 mb-4 px-4 py-3 border"
-      style={{ borderColor: "var(--border-default)" }}
-    >
-      <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
-        {message}
-      </span>
-      <button
-        onClick={onRetry}
-        disabled={retrying}
-        className="px-4 py-1.5 text-xs font-semibold tracking-wider uppercase shrink-0 border cursor-pointer disabled:opacity-60 disabled:cursor-default"
-        style={{
-          borderColor: "var(--text-primary)",
-          color: "var(--text-primary)",
-          backgroundColor: "transparent",
-        }}
-      >
-        {retrying ? "Retrying..." : "Retry"}
-      </button>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   fetchProposalByIdWithPower,
 } from "@/lib/governance";
 import { buildKey } from "@/lib/query-keys";
+import { ProposalNotFoundError } from "@/lib/errors";
 import { REFETCH_INTERVAL, SLOW_REFETCH_INTERVAL, ITEMS_PER_PAGE } from "@/lib/constants";
 import {
   buildProposalDetailView,
@@ -90,7 +91,7 @@ export function useProposalQuery(proposalId: number, initialData?: ProposalDetai
     queryKey,
     queryFn: async () => {
       const { proposal, totalPower } = await fetchProposalByIdWithPower(proposalId);
-      if (!proposal) throw new Error("Proposal not found");
+      if (!proposal) throw new ProposalNotFoundError(proposalId);
       const view = buildProposalDetailView(proposal, totalPower, proposalId);
 
       // Preserve server-enriched fields across client refetches
@@ -111,6 +112,9 @@ export function useProposalQuery(proposalId: number, initialData?: ProposalDetai
       return view;
     },
     initialData,
+    // A nonexistent id is definitive; only transport errors deserve retries.
+    retry: (failureCount, error) =>
+      !(error instanceof ProposalNotFoundError) && failureCount < 3,
     refetchInterval: (query) => {
       if (query.state.data?.isTerminal) return false;
       return REFETCH_INTERVAL;
