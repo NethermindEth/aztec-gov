@@ -1,12 +1,14 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { usePublicClient } from "wagmi";
 import { getAddress, isAddress, type Address } from "viem";
 import {
   fetchBeneficiaryHoldings,
   getIndexerBaseUrl,
   type ATPPosition,
 } from "@/lib/indexer";
+import { discoverHoldingsOnChain } from "@/lib/atp-discovery";
 
 interface UseUserStakersResult {
   stakers: Address[];
@@ -38,6 +40,7 @@ export function useUserStakers(
   address: Address | undefined
 ): UseUserStakersResult {
   const baseUrl = getIndexerBaseUrl();
+  const publicClient = usePublicClient();
   const extraStakers = parseDevExtraStakers();
   // Dev-only override: query the indexer as a different beneficiary, useful
   // for previewing another user's vault state without their private key.
@@ -53,7 +56,17 @@ export function useUserStakers(
     enabled,
     staleTime: 60_000,
     queryFn: async ({ signal }) => {
-      const holdings = await fetchBeneficiaryHoldings(baseUrl!, lookupAddress!, signal);
+      let holdings: ATPPosition[];
+      try {
+        holdings = await fetchBeneficiaryHoldings(baseUrl!, lookupAddress!, signal);
+      } catch (err) {
+        if ((err as Error)?.name === "AbortError") throw err;
+        // Indexer unreachable (transient 403/500/network). Recover ATPs from
+        // on-chain ATPCreated events so staker power and withdrawals still
+        // render. If that also fails, rethrow so the UI warns + offers retry.
+        if (!publicClient) throw err;
+        holdings = await discoverHoldingsOnChain(publicClient, lookupAddress!, signal);
+      }
       const seen = new Set<string>();
       const stakers: Address[] = [];
       for (const h of holdings) {

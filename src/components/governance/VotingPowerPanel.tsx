@@ -301,6 +301,34 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
           </div>
         </div>
       )}
+
+      {/* Discovery failed on both the indexer and the on-chain fallback, so any
+         vault-routed withdrawal can't be listed. Warn with a Retry instead of
+         letting the section vanish silently (mirrors the voting-power card).
+         Gated on the error alone so it persists while the retry is in flight. */}
+      {indexerError && (
+        <div
+          className="flex items-center justify-between gap-3 mx-4 md:mx-6 mb-4 px-4 py-3 border"
+          style={{ borderColor: "var(--border-default)" }}
+        >
+          <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+            Couldn&apos;t load your vault positions, so any withdrawals routed
+            through them may not appear here.
+          </span>
+          <button
+            onClick={() => refetch()}
+            disabled={isLoading}
+            className="px-4 py-1.5 text-xs font-semibold tracking-wider uppercase shrink-0 border cursor-pointer disabled:opacity-60 disabled:cursor-default"
+            style={{
+              borderColor: "var(--text-primary)",
+              color: "var(--text-primary)",
+              backgroundColor: "transparent",
+            }}
+          >
+            {isLoading ? "Retrying..." : "Retry"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
