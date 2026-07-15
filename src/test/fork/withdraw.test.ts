@@ -15,9 +15,6 @@
  *      state at each step matches the contract.
  */
 import {
-  createPublicClient,
-  http,
-  parseAbiItem,
   encodeFunctionData,
   decodeFunctionData,
   getAddress,
@@ -28,33 +25,25 @@ import {
   type Hash,
   type Hex,
 } from "viem";
-import { mainnet } from "viem/chains";
+import {
+  client as c,
+  GOV,
+  AZT,
+  KNOWN_ATPS,
+  initiateWithdrawAbi as initiateAbi,
+  finalizeAbi,
+  withdrawInitiatedEvent as withdrawInitiated,
+  getWithdrawalAbi,
+  withdrawalCountAbi as wcountAbi,
+  powerNowAbi,
+  balanceOfAbi,
+  rpc,
+  fail,
+  pass,
+} from "./context";
 
-const RPC = "http://localhost:8545";
-const GOV = getAddress("0x1102471eb3378fee427121c9efcea452e4b6b75e");
-const AZT = getAddress("0xa27Ec0006E59F245217ff08CD52A7E8b169e62d2");
 const INDEXER = "https://dgk9duhuxabbq.cloudfront.net";
-
-// Beneficiary → ATP map, equivalent to what the indexer returns for each.
-// Used in lieu of the indexer because CloudFront WAF blocks the sandbox.
-const KNOWN_ATPS: Record<string, string[]> = {
-  "0x78fa029f04251cc810dff72ccc7b4764dbc16899": ["0x2C4464618f9b5d7601bED221Ad02cABB285245D8"],
-  "0x256be0de90e34244bdef783de58cac27ae9ffeb3": ["0x4fd0630531df9fa74083c4282bae2bde6a6a255c"],
-  "0x454a3a899dee11a00e05a758b486c45f3b0d829f": ["0x6569406eb6c357d82ffa44724538fc930ae576c4"],
-  "0x2b9338f90182dab6d485dc2ff2e185407f17b442": ["0x842ce8ac778dc738967016eef9a3dbd2c0b192ab"],
-  "0xb6b598d182b266d071c0e80ff57abb90fdd0fb0f": ["0xcb13993ea6204e855ce61a6ffda8ca328a32866b"],
-};
 const WITHDRAWALS_BASE_SLOT = 6;
-
-const c = createPublicClient({ chain: mainnet, transport: http(RPC) });
-
-const initiateAbi = parseAbiItem("function initiateWithdrawFromGovernance(uint256 _amount)");
-const finalizeAbi = parseAbiItem("function finalizeWithdraw(uint256 _withdrawalId)");
-const withdrawInitiated = parseAbiItem("event WithdrawInitiated(uint256 indexed withdrawalId, address indexed recipient, uint256 amount)");
-const getWithdrawalAbi = parseAbiItem("function getWithdrawal(uint256) view returns ((uint256 amount, uint256 unlocksAt, address recipient, bool claimed))");
-const wcountAbi = parseAbiItem("function withdrawalCount() view returns (uint256)");
-const powerNowAbi = parseAbiItem("function powerNow(address) view returns (uint256)");
-const balanceOfAbi = parseAbiItem("function balanceOf(address) view returns (uint256)");
 
 interface Holding {
   address: string;
@@ -64,17 +53,6 @@ interface SurfacedWithdrawal {
   amount: bigint;
   unlocksAt: bigint;
   recipient: Address;
-}
-
-async function rpc<T = unknown>(method: string, params: unknown[] = []): Promise<T> {
-  const r = await fetch(RPC, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  const j = (await r.json()) as { result?: T; error?: { message: string } };
-  if (j.error) throw new Error(`${method}: ${j.error.message}`);
-  return j.result as T;
 }
 
 // Mirror src/lib/indexer.ts's fetchBeneficiaryHoldings.
@@ -136,15 +114,6 @@ async function simulateUseWithdrawals(recipients: Address[]): Promise<SurfacedWi
 
 function structSlot(id: bigint, baseSlot: number): Hex {
   return keccak256(encodeAbiParameters([{ type: "uint256" }, { type: "uint256" }], [id, BigInt(baseSlot)]));
-}
-
-function fail(msg: string): never {
-  console.log(`✗ ${msg}`);
-  process.exit(1);
-}
-
-function pass(msg: string): void {
-  console.log(`✓ ${msg}`);
 }
 
 async function main() {

@@ -10,52 +10,27 @@
  *   4. Wallet (direct) path still works.
  */
 import {
-  createPublicClient,
-  http,
-  parseAbiItem,
   encodeFunctionData,
   decodeFunctionData,
-  getAddress,
   toHex,
   type Hash,
 } from "viem";
-import { mainnet } from "viem/chains";
-
-const RPC = "http://localhost:8545";
-const USER = getAddress("0x78FA029F04251cc810DFF72CCC7B4764DBC16899");
-const ATP = getAddress("0x2C4464618f9b5d7601bED221Ad02cABB285245D8");
-const STAKER = getAddress("0xEaDd1e65dCCeB249156bB3E558479418E19B4fC0");
-const AZT = getAddress("0xa27Ec0006E59F245217ff08CD52A7E8b169e62d2");
-const GOV = getAddress("0x1102471eb3378fee427121c9efcea452e4b6b75e");
-
-const c = createPublicClient({ chain: mainnet, transport: http(RPC) });
-
-const approveStakerAbi = parseAbiItem("function approveStaker(uint256 _amount)");
-const depositIntoGovAbi = parseAbiItem("function depositIntoGovernance(uint256 _amount)");
-const balanceOfAbi = parseAbiItem("function balanceOf(address) view returns (uint256)");
-const allowanceAbi = parseAbiItem(
-  "function allowance(address owner, address spender) view returns (uint256)"
-);
-const powerNowAbi = parseAbiItem("function powerNow(address) view returns (uint256)");
-
-async function rpc<T = unknown>(method: string, params: unknown[] = []): Promise<T> {
-  const r = await fetch(RPC, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  const j = (await r.json()) as { result?: T; error?: { message: string } };
-  if (j.error) throw new Error(`${method}: ${j.error.message}`);
-  return j.result as T;
-}
-
-function fail(msg: string): never {
-  console.log(`✗ ${msg}`);
-  process.exit(1);
-}
-function pass(msg: string): void {
-  console.log(`✓ ${msg}`);
-}
+import {
+  client as c,
+  USER,
+  ATP,
+  STAKER,
+  AZT,
+  GOV,
+  approveStakerAbi,
+  depositIntoGovAbi,
+  balanceOfAbi,
+  allowanceAbi,
+  powerNowAbi,
+  rpc,
+  fail,
+  pass,
+} from "./context";
 
 async function main() {
   await rpc("anvil_setBalance", [USER, toHex(10n * 10n ** 18n)]);
