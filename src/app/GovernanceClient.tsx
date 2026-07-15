@@ -92,7 +92,7 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
     [updateParams]
   );
 
-  const { data, isPlaceholderData } = useProposalsQuery(
+  const { data, isPlaceholderData, isError, isFetching, refetch } = useProposalsQuery(
     { filter: activeTab === "All" ? undefined : activeTab, page: currentPage },
     activeTab === initialFilter && currentPage === initialPage ? initialData : undefined
   );
@@ -247,7 +247,33 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
                   totalSupply={totalPower}
                 />
               ))}
-          {!isPlaceholderData && displayProposals.length === 0 && (
+          {/* A failed fetch with nothing cached used to fall through to
+             "No proposals found."; tell the user it's an error, not an
+             empty chain. With cached data the stale list keeps rendering. */}
+          {!isPlaceholderData && displayProposals.length === 0 && isError && (
+            <div
+              className="flex flex-col items-center gap-3 px-6 py-12 text-center text-sm"
+              style={{
+                backgroundColor: "var(--background-primary)",
+                color: "var(--text-muted)",
+              }}
+            >
+              <span>Couldn&apos;t load proposals. Check your connection and try again.</span>
+              <button
+                onClick={() => refetch()}
+                disabled={isFetching}
+                className="px-4 py-1.5 text-xs font-semibold tracking-wider uppercase border cursor-pointer disabled:opacity-60 disabled:cursor-default"
+                style={{
+                  borderColor: "var(--text-primary)",
+                  color: "var(--text-primary)",
+                  backgroundColor: "transparent",
+                }}
+              >
+                {isFetching ? "Retrying..." : "Retry"}
+              </button>
+            </div>
+          )}
+          {!isPlaceholderData && displayProposals.length === 0 && !isError && (
             <div
               className="px-6 py-12 text-center text-sm"
               style={{
