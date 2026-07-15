@@ -26,9 +26,9 @@
   "dependencies": {
     "@rainbow-me/rainbowkit": "^2.2.10",
     "@tanstack/react-query": "^5.90.21",
-    "next": "16.2.3",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "next": "16.2.10",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
     "viem": "^2.46.3",
     "wagmi": "^2.9.0"
   },
@@ -41,10 +41,15 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.2.10",
     "storybook": "^10.2.15",
     "tailwindcss": "^4",
     "typescript": "5.9.3",
     "vite": "^7.3.2"
+  },
+  "resolutions": {
+    "**/ws": "^8.21.1",
+    "**/postcss": "^8.5.19",
+    "**/js-yaml": "^4.3.0"
   }
 }
