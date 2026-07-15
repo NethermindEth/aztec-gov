@@ -74,6 +74,36 @@ export const indexerUrl = requireUrl(
   process.env.NEXT_PUBLIC_STAKING_INDEXER_URL
 );
 
+// Factories trusted by the on-chain discovery fallback; extend via env as more of the TGE set becomes known.
+const DEFAULT_ATP_FACTORIES: Address[] = [
+  getAddress("0x42df694edf32d5ac19a75e1c7f91c982a7f2a161"),
+];
+
+function optionalAddressList(
+  name: string,
+  raw: string | undefined,
+  fallback: Address[]
+): Address[] {
+  if (!raw || raw.trim().length === 0) return fallback;
+  const out: Address[] = [];
+  for (const part of raw.split(",")) {
+    const s = part.trim();
+    if (s.length === 0) continue;
+    if (!isAddress(s)) {
+      problems.push(`${name} contains an invalid address: ${s}`);
+      continue;
+    }
+    out.push(getAddress(s));
+  }
+  return out;
+}
+
+export const atpFactories = optionalAddressList(
+  "NEXT_PUBLIC_ATP_FACTORIES",
+  process.env.NEXT_PUBLIC_ATP_FACTORIES,
+  DEFAULT_ATP_FACTORIES
+);
+
 if (problems.length > 0) {
   throw new Error(
     "Missing or invalid environment configuration:\n" +

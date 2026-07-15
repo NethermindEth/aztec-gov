@@ -1,25 +1,31 @@
 /*
- * Shared setup for the fork tests (issue #22). Everything here used to be
- * copy-pasted at the top of each *.test.ts file. Test-specific helpers
- * (storage-slot math, format.ts mirrors) stay in their own files.
+ * Shared setup for the fork tests (issue #22). Anvil access and canonical
+ * addresses come from src/test/shared/anvil.ts (also used by the e2e suite);
+ * test-specific helpers (storage-slot math, format.ts mirrors) stay local.
  */
-import {
-  createPublicClient,
-  http,
-  parseAbiItem,
-  getAddress,
-} from "viem";
+import { createPublicClient, http, parseAbiItem, getAddress } from "viem";
 import { mainnet } from "viem/chains";
+import {
+  RPC,
+  CANONICAL_USER,
+  CANONICAL_ATP,
+  CANONICAL_STAKER,
+  AZT as AZT_RAW,
+  GOV as GOV_RAW,
+  anvilRpc,
+  snapshot,
+  revert,
+} from "../shared/anvil";
 
-export const RPC = "http://localhost:8545";
+// Suite-shared JSON-RPC helper; network-level failures get one retry.
+export { RPC, snapshot, revert, anvilRpc as rpc };
 
-// Canonical mainnet actors: the seeded ATP holder, their vault + staker,
-// and the protocol contracts.
-export const USER = getAddress("0x78FA029F04251cc810DFF72CCC7B4764DBC16899");
-export const ATP = getAddress("0x2C4464618f9b5d7601bED221Ad02cABB285245D8");
-export const STAKER = getAddress("0xEaDd1e65dCCeB249156bB3E558479418E19B4fC0");
-export const AZT = getAddress("0xa27Ec0006E59F245217ff08CD52A7E8b169e62d2");
-export const GOV = getAddress("0x1102471eb3378fee427121c9efcea452e4b6b75e");
+// Canonical mainnet actors, checksummed for viem call sites.
+export const USER = getAddress(CANONICAL_USER);
+export const ATP = getAddress(CANONICAL_ATP);
+export const STAKER = getAddress(CANONICAL_STAKER);
+export const AZT = getAddress(AZT_RAW);
+export const GOV = getAddress(GOV_RAW);
 export const MULTICALL3 = getAddress("0xcA11bde05977b3631167028862bE2a173976CA11");
 
 // Anvil dev account #0, deterministic across forks (known private key).
@@ -70,17 +76,6 @@ export const withdrawalCountAbi = parseAbiItem(
   "function withdrawalCount() view returns (uint256)"
 );
 
-export async function rpc<T = unknown>(method: string, params: unknown[] = []): Promise<T> {
-  const r = await fetch(RPC, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  const j = (await r.json()) as { result?: T; error?: { message: string } };
-  if (j.error) throw new Error(`${method}: ${j.error.message}`);
-  return j.result as T;
-}
-
 export function fail(msg: string): never {
   console.log(`✗ ${msg}`);
   process.exit(1);
@@ -92,12 +87,4 @@ export function pass(msg: string): void {
 
 export function section(title: string): void {
   console.log(`  ${title}`);
-}
-
-export async function snapshot(): Promise<string> {
-  return rpc<string>("evm_snapshot");
-}
-
-export async function revert(id: string): Promise<void> {
-  await rpc("evm_revert", [id]);
 }

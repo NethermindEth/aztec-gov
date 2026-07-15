@@ -12,6 +12,7 @@ import { StatsRow } from "@/components/governance/StatsRow";
 import { Tabs } from "@/components/ui/Tabs";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
+import { RetryButton } from "@/components/ui/RetryButton";
 import { ConnectCTA } from "@/components/governance/ConnectCTA";
 import { VotingPowerPanel } from "@/components/governance/VotingPowerPanel";
 import { ExpandableProposalRow } from "@/components/governance/ExpandableProposalRow";
@@ -92,7 +93,7 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
     [updateParams]
   );
 
-  const { data, isPlaceholderData, isError, isFetching, refetch } = useProposalsQuery(
+  const { data, isPlaceholderData, isError, refetch } = useProposalsQuery(
     { filter: activeTab === "All" ? undefined : activeTab, page: currentPage },
     activeTab === initialFilter && currentPage === initialPage ? initialData : undefined
   );
@@ -247,10 +248,8 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
                   totalSupply={totalPower}
                 />
               ))}
-          {/* A failed fetch with nothing cached used to fall through to
-             "No proposals found."; tell the user it's an error, not an
-             empty chain. With cached data the stale list keeps rendering. */}
-          {!isPlaceholderData && displayProposals.length === 0 && isError && (
+          {/* An errored fetch with nothing cached gets a retry, not the misleading empty-chain copy. */}
+          {!isPlaceholderData && displayProposals.length === 0 && (
             <div
               className="flex flex-col items-center gap-3 px-6 py-12 text-center text-sm"
               style={{
@@ -258,30 +257,14 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
                 color: "var(--text-muted)",
               }}
             >
-              <span>Couldn&apos;t load proposals. Check your connection and try again.</span>
-              <button
-                onClick={() => refetch()}
-                disabled={isFetching}
-                className="px-4 py-1.5 text-xs font-semibold tracking-wider uppercase border cursor-pointer disabled:opacity-60 disabled:cursor-default"
-                style={{
-                  borderColor: "var(--text-primary)",
-                  color: "var(--text-primary)",
-                  backgroundColor: "transparent",
-                }}
-              >
-                {isFetching ? "Retrying..." : "Retry"}
-              </button>
-            </div>
-          )}
-          {!isPlaceholderData && displayProposals.length === 0 && !isError && (
-            <div
-              className="px-6 py-12 text-center text-sm"
-              style={{
-                backgroundColor: "var(--background-primary)",
-                color: "var(--text-muted)",
-              }}
-            >
-              No proposals found.
+              {isError ? (
+                <>
+                  <span>Couldn&apos;t load proposals. Check your connection and try again.</span>
+                  <RetryButton onRetry={refetch} />
+                </>
+              ) : (
+                <span>No proposals found.</span>
+              )}
             </div>
           )}
         </div>

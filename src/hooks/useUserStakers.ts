@@ -13,9 +13,11 @@ import { discoverHoldingsOnChain } from "@/lib/atp-discovery";
 interface UseUserStakersResult {
   stakers: Address[];
   holdings: ATPPosition[];
+  /** True when holdings came from the on-chain fallback and may be missing entries. */
+  discoveryIncomplete: boolean;
   isLoading: boolean;
   error?: Error;
-  refetch: () => void;
+  refetch: () => Promise<unknown>;
 }
 
 const EMPTY_HOLDINGS: ATPPosition[] = [];
@@ -51,21 +53,26 @@ export function useUserStakers(
   const { data, isFetching, error, refetch } = useQuery<{
     stakers: Address[];
     holdings: ATPPosition[];
+    discoveryIncomplete: boolean;
   }>({
     queryKey: ["user-stakers", baseUrl ?? "", lookupAddress ?? ""],
     enabled,
     staleTime: 60_000,
+    // The fallback is ~41 getLogs calls; default retries + refetch-on-focus would make outages an RPC storm.
+    retry: 1,
+    refetchOnWindowFocus: false,
     queryFn: async ({ signal }) => {
       let holdings: ATPPosition[];
+      let discoveryIncomplete = false;
       try {
         holdings = await fetchBeneficiaryHoldings(baseUrl!, lookupAddress!, signal);
       } catch (err) {
         if ((err as Error)?.name === "AbortError") throw err;
-        // Indexer unreachable (transient 403/500/network). Recover ATPs from
-        // on-chain ATPCreated events so staker power and withdrawals still
-        // render. If that also fails, rethrow so the UI warns + offers retry.
         if (!publicClient) throw err;
-        holdings = await discoverHoldingsOnChain(publicClient, lookupAddress!, signal);
+        // Indexer unreachable: recover what the on-chain scan can see and flag the gap.
+        const fallback = await discoverHoldingsOnChain(publicClient, lookupAddress!, signal);
+        holdings = fallback.holdings;
+        discoveryIncomplete = fallback.incomplete;
       }
       const seen = new Set<string>();
       const stakers: Address[] = [];
@@ -76,7 +83,7 @@ export function useUserStakers(
         seen.add(checksummed);
         stakers.push(checksummed);
       }
-      return { stakers, holdings };
+      return { stakers, holdings, discoveryIncomplete };
     },
   });
 
@@ -93,10 +100,9 @@ export function useUserStakers(
   return {
     stakers: merged,
     holdings: data?.holdings ?? EMPTY_HOLDINGS,
+    discoveryIncomplete: data?.discoveryIncomplete ?? false,
     isLoading: enabled && isFetching,
     error: error ?? undefined,
-    refetch: () => {
-      refetch();
-    },
+    refetch: () => refetch(),
   };
 }
