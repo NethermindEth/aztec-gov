@@ -58,21 +58,6 @@ function buildTransports(chains: readonly Chain[]) {
 }
 
 /**
- * Minimal config safe for SSR — no connectors that touch browser APIs.
- * Used as fallback so wagmi hooks never throw during server rendering.
- */
-export function createSsrSafeConfig(): Config {
-  const chains = getChains();
-  return createConfig({
-    chains,
-    connectors: [],
-    transports: buildTransports(chains),
-    ssr: true,
-    storage: createStorage({ storage: cookieStorage }),
-  });
-}
-
-/**
  * Full config with RainbowKit wallet connectors.
  * Safe to call during SSR — wallet connectors are only created in the browser
  * (they depend on indexedDB / localStorage which don't exist on the server).
