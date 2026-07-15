@@ -97,7 +97,6 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
     activeTab === initialFilter && currentPage === initialPage ? initialData : undefined
   );
 
-  const proposals = data?.proposals ?? [];
   const totalProposals = data?.totalProposals ?? 0;
   const activeCount = data?.activeCount ?? 0;
   const totalPower = data?.totalPower ?? "0";
@@ -116,6 +115,7 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
 
   // Client-side search filtering (search within the current page)
   const displayProposals = useMemo(() => {
+    const proposals = data?.proposals ?? [];
     if (!searchQuery.trim()) return proposals;
     const q = searchQuery.toLowerCase();
     return proposals.filter(
@@ -124,7 +124,7 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
         p.id.toLowerCase().includes(q) ||
         p.description.toLowerCase().includes(q)
     );
-  }, [proposals, searchQuery]);
+  }, [data?.proposals, searchQuery]);
 
   const totalPages = Math.max(1, Math.ceil(totalFiltered / ITEMS_PER_PAGE));
 

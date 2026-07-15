@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { WalletButton } from "@/components/ui/WalletButton";
 
 type NavLink = "POSITIONS" | "GOVERNANCE" | "DOCS";
@@ -40,7 +41,7 @@ export function Navbar({ activeLink = "GOVERNANCE" }: NavbarProps) {
                 AZTEC
               </span>
               {/* Desktop: image logo */}
-              <img
+              <Image
                 className="hidden md:block"
                 src="/aztec-logo.svg"
                 alt="Aztec"
