@@ -26,7 +26,8 @@ interface ProposalDetailClientProps {
 }
 
 export function ProposalDetailClient({ id, initialData }: ProposalDetailClientProps) {
-  const { data: p, isLoading, isError } = useProposalQuery(id, initialData);
+  const { data: p, isLoading, isError, error, isFetching, refetch } =
+    useProposalQuery(id, initialData);
   const invalidateProposal = useInvalidateProposal();
   const invalidateUserData = useInvalidateUserData();
   const [voteModalOpen, setVoteModalOpen] = useState(false);
@@ -83,6 +84,10 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
   }
 
   if (isError || !p) {
+    // useProposalQuery throws "Proposal not found" for a nonexistent id;
+    // anything else is a transport failure, which gets a retry instead of
+    // masquerading as a missing proposal.
+    const notFound = (error as Error | null)?.message === "Proposal not found";
     return (
       <div
         className="flex flex-col min-h-screen overflow-x-hidden"
@@ -91,8 +96,24 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
         <Navbar activeLink="GOVERNANCE" />
         <main className="flex-1 w-full max-w-[1280px] mx-auto px-4 md:px-8 py-6 md:py-10">
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Proposal not found.
+            {notFound
+              ? "Proposal not found."
+              : "Couldn't load this proposal. Check your connection and try again."}
           </p>
+          {!notFound && (
+            <button
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="mt-4 px-4 py-1.5 text-xs font-semibold tracking-wider uppercase border cursor-pointer disabled:opacity-60 disabled:cursor-default"
+              style={{
+                borderColor: "var(--text-primary)",
+                color: "var(--text-primary)",
+                backgroundColor: "transparent",
+              }}
+            >
+              {isFetching ? "Retrying..." : "Retry"}
+            </button>
+          )}
         </main>
         <Footer />
       </div>
