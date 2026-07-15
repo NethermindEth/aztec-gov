@@ -85,10 +85,6 @@ export function getActiveThrough(
   return getPendingThrough(creation, config) + config.votingDuration;
 }
 
-export function getQuorumPercentage(quorum: bigint): number {
-  return (Number(quorum) / 1e18) * 100;
-}
-
 export function isTerminalState(state: ProposalState): boolean {
   return [
     ProposalState.Rejected,
@@ -357,16 +353,4 @@ export async function fetchProposalByIdWithPower(
     },
     totalPower,
   };
-}
-
-// ─── Standalone Helpers (used by other hooks) ───────────────────────────────
-
-export async function fetchTotalPower(): Promise<bigint> {
-  if (!governanceAddress) return 0n;
-
-  return publicClient.readContract({
-    abi: GovernanceAbi,
-    address: governanceAddress,
-    functionName: "totalPowerNow",
-  });
 }

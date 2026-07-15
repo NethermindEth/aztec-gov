@@ -36,14 +36,6 @@ export function formatTimeRemaining(targetTimestamp: bigint): string {
   return "< 1m remaining";
 }
 
-export function formatVotes(value: bigint): string {
-  const num = Number(value) / 1e18;
-  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
-  if (num >= 1_000)
-    return `${(num / 1_000).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
-  return num.toFixed(0);
-}
-
 export function formatVotesWithUnit(value: bigint): string {
   const num = Number(value) / 1e18;
   if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M AZT`;
