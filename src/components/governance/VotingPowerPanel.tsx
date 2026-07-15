@@ -55,8 +55,15 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
     }
     return sum;
   }, [address, atpAddresses, atpBalances, atpOperators]);
-  const { withdrawals, withdrawalDelay, isLoading: withdrawalsLoading } =
-    useWithdrawals(recipients);
+  const {
+    withdrawals,
+    withdrawalDelay,
+    isLoading: withdrawalsLoading,
+    isFetching: withdrawalsFetching,
+    scanIncomplete,
+    error: withdrawalsError,
+    refetch: refetchWithdrawals,
+  } = useWithdrawals(recipients);
 
   // Render the section while the log scan runs so rows don't pop in.
   const showWithdrawalsSection =
@@ -118,27 +125,11 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
          While the staker query re-fetches, `isLoading` is true with the error
          still set, so the button doubles as the retry-in-flight indicator. */}
       {indexerError && (
-        <div
-          className="flex items-center justify-between gap-3 mx-4 md:mx-6 mb-4 px-4 py-3 border"
-          style={{ borderColor: "var(--border-default)" }}
-        >
-          <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
-            Couldn&apos;t load your staking positions, so voting power may be
-            understated.
-          </span>
-          <button
-            onClick={() => refetch()}
-            disabled={isLoading}
-            className="px-4 py-1.5 text-xs font-semibold tracking-wider uppercase shrink-0 border cursor-pointer disabled:opacity-60 disabled:cursor-default"
-            style={{
-              borderColor: "var(--text-primary)",
-              color: "var(--text-primary)",
-              backgroundColor: "transparent",
-            }}
-          >
-            {isLoading ? "Retrying..." : "Retry"}
-          </button>
-        </div>
+        <WarningBanner
+          message="Couldn't load your staking positions, so voting power may be understated."
+          onRetry={refetch}
+          retrying={isLoading}
+        />
       )}
 
       {/* Mobile-only compact summary */}
@@ -307,28 +298,57 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
          letting the section vanish silently (mirrors the voting-power card).
          Gated on the error alone so it persists while the retry is in flight. */}
       {indexerError && (
-        <div
-          className="flex items-center justify-between gap-3 mx-4 md:mx-6 mb-4 px-4 py-3 border"
-          style={{ borderColor: "var(--border-default)" }}
-        >
-          <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
-            Couldn&apos;t load your vault positions, so any withdrawals routed
-            through them may not appear here.
-          </span>
-          <button
-            onClick={() => refetch()}
-            disabled={isLoading}
-            className="px-4 py-1.5 text-xs font-semibold tracking-wider uppercase shrink-0 border cursor-pointer disabled:opacity-60 disabled:cursor-default"
-            style={{
-              borderColor: "var(--text-primary)",
-              color: "var(--text-primary)",
-              backgroundColor: "transparent",
-            }}
-          >
-            {isLoading ? "Retrying..." : "Retry"}
-          </button>
-        </div>
+        <WarningBanner
+          message="Couldn't load your vault positions, so any withdrawals routed through them may not appear here."
+          onRetry={refetch}
+          retrying={isLoading}
+        />
       )}
+
+      {/* The log scan dropped a block window (scanIncomplete) or failed
+         outright (withdrawalsError), so rows may be missing even though the
+         recipient set was resolved fine. Separate retry from the indexer
+         banner: this refetches the scan, not staker discovery. */}
+      {(scanIncomplete || !!withdrawalsError) && (
+        <WarningBanner
+          message="Part of the withdrawal history scan failed, so this list may be incomplete."
+          onRetry={refetchWithdrawals}
+          retrying={withdrawalsFetching}
+        />
+      )}
+    </div>
+  );
+}
+
+function WarningBanner({
+  message,
+  onRetry,
+  retrying,
+}: {
+  message: string;
+  onRetry: () => void;
+  retrying?: boolean;
+}) {
+  return (
+    <div
+      className="flex items-center justify-between gap-3 mx-4 md:mx-6 mb-4 px-4 py-3 border"
+      style={{ borderColor: "var(--border-default)" }}
+    >
+      <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+        {message}
+      </span>
+      <button
+        onClick={onRetry}
+        disabled={retrying}
+        className="px-4 py-1.5 text-xs font-semibold tracking-wider uppercase shrink-0 border cursor-pointer disabled:opacity-60 disabled:cursor-default"
+        style={{
+          borderColor: "var(--text-primary)",
+          color: "var(--text-primary)",
+          backgroundColor: "transparent",
+        }}
+      >
+        {retrying ? "Retrying..." : "Retry"}
+      </button>
     </div>
   );
 }
