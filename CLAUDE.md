@@ -5,13 +5,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-yarn dev        # Start dev server (Turbopack, http://localhost:3000)
-yarn build      # Production build
-yarn start      # Start production server
-yarn lint       # Run ESLint
+yarn dev              # Start dev server (Turbopack, http://localhost:3000)
+yarn build            # Production build
+yarn start            # Start production server
+yarn lint             # Run ESLint
+yarn test:e2e         # Playwright E2E suite (see src/test/e2e/)
+yarn test:e2e:batched # E2E, one spec per Playwright run (fresh anvil each)
+yarn test:fork        # Fork tests vs an Anvil mainnet fork (src/test/fork/)
+yarn bootstrap-anvil  # Spin up + seed the Anvil fork the tests expect
 ```
 
-No test runner is configured yet.
+There is no unit test runner; testing is Playwright E2E plus tsx-driven fork
+tests against an Anvil mainnet fork.
 
 ## Tech Stack
 
@@ -23,11 +28,16 @@ No test runner is configured yet.
 
 ## Architecture
 
-This is a fresh Next.js App Router project. All application code lives under `src/app/`.
+- `src/app/` — App Router routes: proposals list (`page.tsx` + `GovernanceClient.tsx`) and proposal detail (`[id]/`), plus `error.tsx`/`global-error.tsx`/`not-found.tsx` boundaries.
+- `src/components/` — `governance/` (domain UI: VotingPowerPanel, Deposit/Withdraw/Vote modals, proposal rows), `ui/` (primitives), `layout/`, `providers/` (Web3Provider: wagmi + RainbowKit + react-query).
+- `src/hooks/` — one hook per flow (useDeposit, useWithdraw, useVote, useVotingPower, useUserStakers, useWithdrawals, ...). Every flow has a direct path and a Staker-routed path for ATP (vault) holders.
+- `src/lib/` — `config.ts` (env validation, throws at boot), `contracts.ts` (ABIs + addresses + server viem client), `governance.ts` (on-chain proposal reads), `indexer.ts` (staking-indexer API), `atp-discovery.ts` (on-chain fallback), `tx.ts` (revert-checking receipt guard).
+- `src/proxy.ts` — Next middleware setting the nonce-based CSP.
+- `src/test/` — `e2e/` (Playwright), `fork/` (tsx vs Anvil fork), `manual/`.
 
-**Tailwind v4 note**: Unlike v3, there is no `tailwind.config.ts`. Theme customization is done inside `globals.css` using `@theme inline { ... }`. CSS variables `--background` and `--foreground` drive the color scheme with automatic dark mode via `prefers-color-scheme`.
+**Tailwind v4 note**: Unlike v3, there is no `tailwind.config.ts`. Theme customization is done inside `globals.css` using `@theme inline { ... }`; the palette lives in CSS variables like `--background-primary` and `--accent-primary`.
 
-**Fonts**: Geist Sans and Geist Mono are loaded via `next/font/google` in `layout.tsx` and exposed as CSS variables (`--font-geist-sans`, `--font-mono`), mapped to Tailwind's `--font-sans` / `--font-mono` tokens inside `@theme`.
+**Fonts**: Inter and Lora are loaded via `next/font/google` in `layout.tsx` and exposed as `--font-inter` / `--font-lora`, mapped to `--font-sans` / `--font-display` tokens inside `@theme`.
 
 **ESLint**: Uses flat config (`eslint.config.mjs`) with `eslint-config-next` core-web-vitals + TypeScript rules.
 

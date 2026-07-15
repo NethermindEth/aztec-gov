@@ -125,37 +125,20 @@ PRIVATE_KEY=0x... RPC_URL=http://localhost:8545 CHAIN_ID=31337 ./scripts/deploy-
 | `RPC_URL` | No | Sepolia public node | RPC endpoint |
 | `CHAIN_ID` | No | `11155111` | Target chain ID |
 
-### `./scripts/seed-governance.sh`
-
-Seed a deployed governance with token deposits and 5 test proposals using Forge. Creates `TestPayload` contracts on-chain with sample forum URIs.
-
-**Requires:** `PRIVATE_KEY`, `STAKING_ASSET_ADDRESS`, `GOVERNANCE_ADDRESS`, Foundry (`forge`), `../aztec-packages` checkout.
-
-```bash
-PRIVATE_KEY=0x... \
-STAKING_ASSET_ADDRESS=0x... \
-GOVERNANCE_ADDRESS=0x... \
-./scripts/seed-governance.sh
-```
-
-| Env Var | Required | Default | Description |
-|---------|----------|---------|-------------|
-| `PRIVATE_KEY` | Yes | — | Deployer wallet private key |
-| `STAKING_ASSET_ADDRESS` | Yes | — | Deployed TestERC20 address |
-| `GOVERNANCE_ADDRESS` | Yes | — | Deployed Governance address |
-| `AZTEC_PACKAGES_PATH` | No | `../aztec-packages` | Path to aztec-packages repo |
-| `RPC_URL` | No | Sepolia public node | RPC endpoint |
-| `CHAIN_ID` | No | `11155111` | Target chain ID |
-
 ### `yarn seed-governance`
 
-TypeScript alternative for seeding. Mints tokens, approves, and deposits for voting power. Reads contract addresses from `.env.local`.
+Seed a deployed governance with token deposits and 5 test proposals (deploys `TestPayload` contracts on-chain with sample forum URIs). Reads contract addresses from env or the project root `.env.local`.
 
 ```bash
 PRIVATE_KEY=0x... yarn seed-governance
 ```
 
-> Note: This script handles deposits only. To create proposals (which require deploying `TestPayload` contracts), use the Forge-based `seed-governance.sh` instead.
+| Env Var | Required | Default | Description |
+|---------|----------|---------|-------------|
+| `PRIVATE_KEY` | Yes | — | Deployer wallet private key |
+| `STAKING_ASSET_ADDRESS` | No | `NEXT_PUBLIC_STAKING_ASSET_ADDRESS` from `.env.local` | Deployed TestERC20 address |
+| `GOVERNANCE_ADDRESS` | No | `NEXT_PUBLIC_GOVERNANCE_ADDRESS` from `.env.local` | Deployed Governance address |
+| `TEST_VOTER` | No | — | Also deposit voting power for this address |
 
 ## End-to-End Test Workflow
 
@@ -179,23 +162,11 @@ yarn dev
 PRIVATE_KEY=0x... ./scripts/deploy-test-governance.sh
 
 # 2. Seed with deposits + proposals
-PRIVATE_KEY=0x... \
-STAKING_ASSET_ADDRESS=0x... \
-GOVERNANCE_ADDRESS=0x... \
-./scripts/seed-governance.sh
+#    (addresses come from .env.local, updated by step 1)
+PRIVATE_KEY=0x... yarn seed-governance
 
 # 3. Start dashboard
 yarn dev
-```
-
-With direnv set up, step 2 simplifies to:
-
-```bash
-# .env.local already has the addresses from step 1
-PRIVATE_KEY=0x... \
-STAKING_ASSET_ADDRESS=$NEXT_PUBLIC_STAKING_ASSET_ADDRESS \
-GOVERNANCE_ADDRESS=$NEXT_PUBLIC_GOVERNANCE_ADDRESS \
-./scripts/seed-governance.sh
 ```
 
 </details>
