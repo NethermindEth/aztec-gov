@@ -38,11 +38,14 @@ interface UseWithdrawalsResult {
   withdrawals: WithdrawalInfo[];
   withdrawalDelay: bigint | undefined;
   isLoading: boolean;
+  isFetching: boolean;
+  /** True when at least one getLogs chunk failed, so the list may be partial. */
+  scanIncomplete: boolean;
   error: Error | null;
   refetch: () => void;
 }
 
-// Under publicnode's 50k eth_getLogs cap; rejected chunks fall through as empty.
+// Under publicnode's 50k eth_getLogs cap; rejected chunks are skipped and flagged.
 const CHUNK_SIZE = 49_000n;
 // ~277 days at 12s blocks. E2E mode shrinks the lookback so 28 sequential
 // page loads don't saturate the fork RPC. Long-term fix is the indexer.
@@ -80,16 +83,18 @@ export function useWithdrawalDelay(): bigint | undefined {
 }
 
 // Walks blocks in chunks and returns the set of withdrawalIds whose
-// recipient is in `recipients`. Failed chunks are treated as empty.
+// recipient is in `recipients`. Failed chunks are skipped but flagged via
+// `incomplete` so the UI can warn instead of silently showing fewer rows.
 async function scanWithdrawalIds(
   client: PublicClient,
   recipients: Address[],
   lookback: bigint,
   chunkSize: bigint
-): Promise<bigint[]> {
+): Promise<{ ids: bigint[]; incomplete: boolean }> {
   const blockNumber = await client.getBlockNumber();
   const endBlock = blockNumber > lookback ? blockNumber - lookback : 0n;
   const ids = new Set<bigint>();
+  let incomplete = false;
 
   for (let toBlock = blockNumber; toBlock >= endBlock; toBlock -= chunkSize) {
     const fromBlock =
@@ -110,6 +115,7 @@ async function scanWithdrawalIds(
               `useWithdrawals: getLogs failed for ${fromBlock}-${toBlock}`,
               err
             );
+            incomplete = true;
             return [];
           })
       )
@@ -121,7 +127,7 @@ async function scanWithdrawalIds(
     }
   }
 
-  return Array.from(ids);
+  return { ids: Array.from(ids), incomplete };
 }
 
 // Multicalls getWithdrawal(id) for each id and filters by claimed=false +
@@ -184,8 +190,11 @@ export function useWithdrawals(recipients: Address[]): UseWithdrawalsResult {
     enabled: !!publicClient && normalizedRecipients.length > 0,
     refetchInterval: REFETCH_INTERVAL,
     refetchIntervalInBackground: false,
-    queryFn: async (): Promise<WithdrawalInfo[]> => {
-      const ids = await scanWithdrawalIds(
+    queryFn: async (): Promise<{
+      withdrawals: WithdrawalInfo[];
+      scanIncomplete: boolean;
+    }> => {
+      const { ids, incomplete } = await scanWithdrawalIds(
         publicClient!,
         normalizedRecipients as Address[],
         MAX_BLOCKS_BACK,
@@ -198,14 +207,22 @@ export function useWithdrawals(recipients: Address[]): UseWithdrawalsResult {
       const nowSec = override
         ? BigInt(override)
         : BigInt(Math.floor(Date.now() / 1000));
-      return resolveWithdrawals(publicClient!, ids, recipientSet, nowSec);
+      const withdrawals = await resolveWithdrawals(
+        publicClient!,
+        ids,
+        recipientSet,
+        nowSec
+      );
+      return { withdrawals, scanIncomplete: incomplete };
     },
   });
 
   return {
-    withdrawals: query.data ?? [],
+    withdrawals: query.data?.withdrawals ?? [],
     withdrawalDelay,
     isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    scanIncomplete: query.data?.scanIncomplete ?? false,
     error: query.error,
     refetch: () => {
       query.refetch();
