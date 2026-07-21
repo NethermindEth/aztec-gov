@@ -5,8 +5,7 @@ interface VoteBreakdownProps {
   yeaVotes: string;
   nayVotes: string;
   quorumReached: boolean;
-  quorumCurrent: string;
-  quorumRequired: string;
+  quorumRatio: string;
   quorumPct: number;
 }
 
@@ -17,8 +16,7 @@ export function VoteBreakdown({
   yeaVotes,
   nayVotes,
   quorumReached,
-  quorumCurrent,
-  quorumRequired,
+  quorumRatio,
   quorumPct,
 }: VoteBreakdownProps) {
   return (
@@ -146,7 +144,8 @@ export function VoteBreakdown({
           />
         </div>
         <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-          {quorumCurrent} / {quorumRequired} AZT required ({quorumPct.toFixed(1)}%)
+          {/* Floored so a 99.99% near-miss never rounds up to "100.0%" beside "Not Reached". */}
+          {quorumRatio} required ({(Math.floor(quorumPct * 10) / 10).toFixed(1)}%)
         </p>
       </div>
     </div>

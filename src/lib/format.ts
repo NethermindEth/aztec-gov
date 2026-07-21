@@ -36,16 +36,23 @@ export function formatTimeRemaining(targetTimestamp: bigint): string {
   return "< 1m remaining";
 }
 
-export function formatVotesWithUnit(value: bigint): string {
-  const num = Number(value) / 1e18;
-  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M AZT`;
-  if (num >= 1_000) {
-    const formatted = Math.floor(num)
-      .toString()
-      .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    return `${formatted} AZT`;
+const WEI_PER_AZT = 10n ** 18n;
+
+// Unitless variant for render sites that place their own "AZT" literal.
+// Bigint math throughout: Number(wei) loses precision above 2^53 and can
+// flip the displayed integer across a tier boundary.
+export function formatVotes(value: bigint): string {
+  const wholeAzt = value / WEI_PER_AZT;
+  if (wholeAzt >= 1_000_000n) {
+    // Tenths of a million, rounded half up: 133,450,000 AZT -> "133.5M".
+    const tenthsOfM = (value / (WEI_PER_AZT * 10_000n) + 5n) / 10n;
+    return `${tenthsOfM / 10n}.${tenthsOfM % 10n}M`;
   }
-  return `${Math.floor(num)} AZT`;
+  return formatWithCommas(wholeAzt.toString());
+}
+
+export function formatVotesWithUnit(value: bigint): string {
+  return `${formatVotes(value)} AZT`;
 }
 
 export function getSummaryText(
