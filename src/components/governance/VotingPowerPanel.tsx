@@ -6,9 +6,12 @@ import { useWallet } from "@/hooks/useWallet";
 import { useVotingPower } from "@/hooks/useVotingPower";
 import { useWithdrawals, type WithdrawalInfo } from "@/hooks/useWithdrawals";
 import { useUserStakers } from "@/hooks/useUserStakers";
+import { useDelegations } from "@/hooks/useDelegations";
+import { classifyDelegatee } from "@/lib/gse-delegation";
 import { WarningBanner } from "@/components/ui/WarningBanner";
 import { useATPBalances } from "@/hooks/useATPBalances";
 import { useFinalizeWithdraw } from "@/hooks/useFinalizeWithdraw";
+import { DelegateModal } from "@/components/governance/DelegateModal";
 import { formatVotesWithUnit, formatTimeRemaining, sanitizeTransactionError, formatDuration } from "@/lib/format";
 
 interface VotingPowerPanelProps {
@@ -64,6 +67,32 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
     error: withdrawalsError,
     refetch: refetchWithdrawals,
   } = useWithdrawals(recipients);
+
+  // GSE stakes whose voting power the wallet can re-delegate (issue #13).
+  const {
+    positions: delegationPositions,
+    incomplete: delegationsIncomplete,
+    isLoading: delegationsLoading,
+    refetch: refetchDelegations,
+  } = useDelegations(address);
+  const [delegateModalOpen, setDelegateModalOpen] = useState(false);
+  const delegationSummary = useMemo(() => {
+    if (delegationPositions.length === 0) return null;
+    const total = delegationPositions.reduce((acc, p) => acc + p.balance, 0n);
+    const wallet = address ? getAddress(address) : undefined;
+    const classes = new Set(
+      delegationPositions.map((p) => classifyDelegatee(p, wallet))
+    );
+    const delegateeLabel =
+      classes.size > 1
+        ? "mixed targets"
+        : classes.has("self")
+          ? "you"
+          : classes.has("default")
+            ? "the rollup (default)"
+            : "another address";
+    return { total, count: delegationPositions.length, delegateeLabel };
+  }, [delegationPositions, address]);
 
   // Render the section while the log scan runs so rows don't pop in.
   const showWithdrawalsSection =
@@ -170,6 +199,56 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
             View breakdown in Positions →
           </a>
         </div>
+      )}
+
+      {/* Staked (GSE) voting power delegation: sequencer stake defaults its
+         power to the rollup; the modal re-delegates it per position. */}
+      {!isLoading && !delegationsLoading && delegationSummary && (
+        <>
+          <div
+            className="hidden md:flex items-center justify-between mx-6 mb-4 px-4 py-3 border"
+            style={{ borderColor: "var(--border-default)" }}
+          >
+            <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+              {formatVotesWithUnit(delegationSummary.total)} of staked voting power
+              across {delegationSummary.count} position
+              {delegationSummary.count === 1 ? "" : "s"}, delegated to{" "}
+              {delegationSummary.delegateeLabel}
+            </span>
+            <button
+              onClick={() => setDelegateModalOpen(true)}
+              className="px-4 py-1.5 text-xs font-semibold tracking-wider uppercase cursor-pointer shrink-0 ml-4 border"
+              style={{
+                borderColor: "var(--text-primary)",
+                color: "var(--text-primary)",
+                backgroundColor: "transparent",
+              }}
+            >
+              Delegate
+            </button>
+          </div>
+          <div className="flex md:hidden px-4 pb-3">
+            <button
+              onClick={() => setDelegateModalOpen(true)}
+              className="w-full py-2 text-xs font-semibold tracking-wider uppercase cursor-pointer border"
+              style={{
+                borderColor: "var(--text-primary)",
+                color: "var(--text-primary)",
+                backgroundColor: "transparent",
+              }}
+            >
+              Delegate Voting Power
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Delegation discovery gaps get their own retry, separate from staker discovery. */}
+      {delegationsIncomplete && (
+        <WarningBanner
+          message="Couldn't fully load your staked positions, so some may be missing from delegation."
+          onRetry={refetchDelegations}
+        />
       )}
 
       {/* Deposit CTA when wallet or a vault has depositable AZT. The modal's
@@ -295,6 +374,11 @@ export function VotingPowerPanel({ totalSupply, onDeposit, onWithdraw }: VotingP
           onRetry={refetchWithdrawals}
         />
       )}
+
+      <DelegateModal
+        isOpen={delegateModalOpen}
+        onClose={() => setDelegateModalOpen(false)}
+      />
     </div>
   );
 }

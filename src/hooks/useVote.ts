@@ -7,12 +7,20 @@ import {
   GovernanceAbi,
   ERC20Abi,
   StakerAbi,
+  GSEAbi,
   governanceAddress,
   stakingAssetAddress,
+  gseAddress,
 } from "@/lib/contracts";
 import { type Address, walletActions } from "viem";
 import { waitForSuccessfulReceipt } from "@/lib/tx";
 import { sanitizeTransactionError } from "@/lib/format";
+
+// Where the vote is cast from: the wallet's own governance deposits, a
+// Staker's deposits, or power delegated to the wallet on the GSE.
+export type VoteRoute =
+  | { kind: "staker"; address: Address }
+  | { kind: "gse" };
 
 export type VoteStep =
   | "idle"
@@ -41,7 +49,7 @@ export function useVote() {
       support: boolean,
       depositAmount: bigint,
       userAddress: Address,
-      stakerAddress?: Address
+      route?: VoteRoute
     ) => {
       if (!connector || !publicClient) {
         setVoteError(new Error("Wallet not connected"));
@@ -49,9 +57,9 @@ export function useVote() {
         return;
       }
 
-      if (stakerAddress && depositAmount > 0n) {
+      if (route && depositAmount > 0n) {
         setVoteError(
-          new Error("Cannot deposit and vote via a staker in one action")
+          new Error("Cannot deposit and vote via this source in one action")
         );
         setStep("error");
         return;
@@ -98,23 +106,36 @@ export function useVote() {
           if (abortRef.current) return;
         }
 
-        // Step 3: Vote — via staker or directly against governance
+        // Step 3: Vote via staker, the GSE (delegated power), or directly
+        // against governance
         setStep("voting");
-        const voteTxHash = stakerAddress
-          ? await walletClient.writeContract({
-              chain,
-              address: stakerAddress,
-              abi: StakerAbi,
-              functionName: "voteInGovernance",
-              args: [BigInt(proposalId), amount, support],
-            })
-          : await walletClient.writeContract({
-              chain,
-              address: governanceAddress,
-              abi: GovernanceAbi,
-              functionName: "vote",
-              args: [BigInt(proposalId), amount, support],
-            });
+        const voteArgs = [BigInt(proposalId), amount, support] as const;
+        let voteTxHash: `0x${string}`;
+        if (route?.kind === "staker") {
+          voteTxHash = await walletClient.writeContract({
+            chain,
+            address: route.address,
+            abi: StakerAbi,
+            functionName: "voteInGovernance",
+            args: voteArgs,
+          });
+        } else if (route?.kind === "gse") {
+          voteTxHash = await walletClient.writeContract({
+            chain,
+            address: gseAddress,
+            abi: GSEAbi,
+            functionName: "vote",
+            args: voteArgs,
+          });
+        } else {
+          voteTxHash = await walletClient.writeContract({
+            chain,
+            address: governanceAddress,
+            abi: GovernanceAbi,
+            functionName: "vote",
+            args: voteArgs,
+          });
+        }
         if (abortRef.current) return;
 
         setStep("waiting-vote");
