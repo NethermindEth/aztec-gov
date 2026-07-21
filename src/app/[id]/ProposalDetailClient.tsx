@@ -180,8 +180,7 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
               yeaVotes={p.yeaVotes}
               nayVotes={p.nayVotes}
               quorumReached={p.quorumReached}
-              quorumCurrent={p.quorumCurrent}
-              quorumRequired={p.quorumRequired}
+              quorumRatio={p.quorumRatio}
               quorumPct={p.quorumPct}
             />
             <ActionPanel
@@ -190,8 +189,7 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
               nayPct={p.nayPct}
               executedDate={p.executedDate}
               executionTxHash={p.executionTxHash}
-              quorumCurrent={p.quorumCurrent}
-              quorumRequired={p.quorumRequired}
+              quorumRatio={p.quorumRatio}
               quorumPct={p.quorumPct}
               totalSupply={p.totalSupply}
               onVote={handleVote}

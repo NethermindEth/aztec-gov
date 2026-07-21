@@ -77,12 +77,11 @@ export interface ProposalDetailView {
   nayVotes: string;
   yeaVoters: number;
   nayVoters: number;
-  totalVotesFormatted: string;
 
   // Quorum
   quorumReached: boolean;
-  quorumCurrent: string;
-  quorumRequired: string;
+  /** Full display string, unit included: "1.7M / 2.5M AZT". */
+  quorumRatio: string;
   quorumPct: number;
 
   // Lifecycle

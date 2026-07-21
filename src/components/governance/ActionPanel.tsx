@@ -12,8 +12,7 @@ interface ActionPanelProps {
   nayPct?: number;
   executedDate?: string;
   executionTxHash?: string;
-  quorumCurrent?: string;
-  quorumRequired?: string;
+  quorumRatio?: string;
   quorumPct?: number;
   totalSupply?: string;
   onVote?: (support: boolean) => void;
@@ -26,8 +25,7 @@ export function ActionPanel({
   nayPct,
   executedDate,
   executionTxHash,
-  quorumCurrent,
-  quorumRequired,
+  quorumRatio,
   quorumPct,
   totalSupply,
   onVote,
@@ -284,9 +282,9 @@ export function ActionPanel({
           Proposal Expired
         </h3>
         <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
-          This proposal expired without reaching quorum. Only{" "}
-          {quorumCurrent} / {quorumRequired} AZT ({quorumPct?.toFixed(0)}%)
-          participated.
+          {/* Floored so a 99.99% near-miss never rounds up to "(100%)". */}
+          This proposal expired without reaching quorum. Only {quorumRatio} (
+          {Math.floor(quorumPct ?? 0)}%) participated.
         </p>
       </div>
     );
