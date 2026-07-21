@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-// CSP is set dynamically via middleware.ts (nonce-based strict-dynamic).
+// CSP is set dynamically via src/proxy.ts (nonce-based strict-dynamic).
 // Only non-CSP security headers go here.
 const securityHeaders = [
   { key: "X-Frame-Options", value: "SAMEORIGIN" },

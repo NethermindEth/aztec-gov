@@ -29,7 +29,7 @@ interface VotingPowerResult {
   supplyPercentage: number;
   isLoading: boolean;
   indexerError?: Error;
-  refetch: () => void;
+  refetch: () => unknown;
 }
 
 const ZERO: VotingPowerResult = {

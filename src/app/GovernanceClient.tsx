@@ -12,6 +12,7 @@ import { StatsRow } from "@/components/governance/StatsRow";
 import { Tabs } from "@/components/ui/Tabs";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
+import { RetryButton } from "@/components/ui/RetryButton";
 import { ConnectCTA } from "@/components/governance/ConnectCTA";
 import { VotingPowerPanel } from "@/components/governance/VotingPowerPanel";
 import { ExpandableProposalRow } from "@/components/governance/ExpandableProposalRow";
@@ -92,7 +93,7 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
     [updateParams]
   );
 
-  const { data, isPlaceholderData } = useProposalsQuery(
+  const { data, isPlaceholderData, isError, refetch } = useProposalsQuery(
     { filter: activeTab === "All" ? undefined : activeTab, page: currentPage },
     activeTab === initialFilter && currentPage === initialPage ? initialData : undefined
   );
@@ -247,15 +248,23 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
                   totalSupply={totalPower}
                 />
               ))}
+          {/* An errored fetch with nothing cached gets a retry, not the misleading empty-chain copy. */}
           {!isPlaceholderData && displayProposals.length === 0 && (
             <div
-              className="px-6 py-12 text-center text-sm"
+              className="flex flex-col items-center gap-3 px-6 py-12 text-center text-sm"
               style={{
                 backgroundColor: "var(--background-primary)",
                 color: "var(--text-muted)",
               }}
             >
-              No proposals found.
+              {isError ? (
+                <>
+                  <span>Couldn&apos;t load proposals. Check your connection and try again.</span>
+                  <RetryButton onRetry={refetch} />
+                </>
+              ) : (
+                <span>No proposals found.</span>
+              )}
             </div>
           )}
         </div>

@@ -19,6 +19,8 @@ import { ForumReference } from "@/components/governance/ForumReference";
 import { VoteModal } from "@/components/governance/VoteModal";
 import { DepositModal } from "@/components/governance/DepositModal";
 import { getForumUrl } from "@/lib/forum";
+import { ProposalNotFoundError } from "@/lib/errors";
+import { RetryButton } from "@/components/ui/RetryButton";
 
 interface ProposalDetailClientProps {
   id: number;
@@ -26,7 +28,8 @@ interface ProposalDetailClientProps {
 }
 
 export function ProposalDetailClient({ id, initialData }: ProposalDetailClientProps) {
-  const { data: p, isLoading, isError } = useProposalQuery(id, initialData);
+  const { data: p, isLoading, isError, error, refetch } =
+    useProposalQuery(id, initialData);
   const invalidateProposal = useInvalidateProposal();
   const invalidateUserData = useInvalidateUserData();
   const [voteModalOpen, setVoteModalOpen] = useState(false);
@@ -83,6 +86,8 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
   }
 
   if (isError || !p) {
+    // A nonexistent id is typed; anything else is transport and gets a retry.
+    const notFound = error instanceof ProposalNotFoundError;
     return (
       <div
         className="flex flex-col min-h-screen overflow-x-hidden"
@@ -91,8 +96,11 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
         <Navbar activeLink="GOVERNANCE" />
         <main className="flex-1 w-full max-w-[1280px] mx-auto px-4 md:px-8 py-6 md:py-10">
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Proposal not found.
+            {notFound
+              ? "Proposal not found."
+              : "Couldn't load this proposal. Check your connection and try again."}
           </p>
+          {!notFound && <RetryButton onRetry={refetch} className="mt-4" />}
         </main>
         <Footer />
       </div>

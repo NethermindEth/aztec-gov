@@ -6,6 +6,7 @@ import { usePublicClient } from "wagmi";
 import { parseAbiItem, type Address, type PublicClient } from "viem";
 import { GovernanceAbi, governanceAddress } from "@/lib/contracts";
 import { REFETCH_INTERVAL } from "@/lib/constants";
+import { scanEventLogs } from "@/lib/log-scan";
 
 interface WithdrawalRaw {
   amount: bigint;
@@ -38,16 +39,11 @@ interface UseWithdrawalsResult {
   withdrawals: WithdrawalInfo[];
   withdrawalDelay: bigint | undefined;
   isLoading: boolean;
+  /** True when at least one getLogs chunk failed, so the list may be partial. */
+  scanIncomplete: boolean;
   error: Error | null;
-  refetch: () => void;
+  refetch: () => Promise<unknown>;
 }
-
-// Under publicnode's 50k eth_getLogs cap; rejected chunks fall through as empty.
-const CHUNK_SIZE = 49_000n;
-// ~277 days at 12s blocks. E2E mode shrinks the lookback so 28 sequential
-// page loads don't saturate the fork RPC. Long-term fix is the indexer.
-const MAX_BLOCKS_BACK =
-  process.env.NEXT_PUBLIC_E2E === "1" ? 50_000n : 2_000_000n;
 
 const withdrawInitiatedEvent = parseAbiItem(
   "event WithdrawInitiated(uint256 indexed withdrawalId, address indexed recipient, uint256 amount)"
@@ -79,49 +75,26 @@ export function useWithdrawalDelay(): bigint | undefined {
   return data ?? undefined;
 }
 
-// Walks blocks in chunks and returns the set of withdrawalIds whose
-// recipient is in `recipients`. Failed chunks are treated as empty.
+// Scans WithdrawInitiated logs for `recipients`; failed chunks surface via `incomplete`.
 async function scanWithdrawalIds(
   client: PublicClient,
   recipients: Address[],
-  lookback: bigint,
-  chunkSize: bigint
-): Promise<bigint[]> {
-  const blockNumber = await client.getBlockNumber();
-  const endBlock = blockNumber > lookback ? blockNumber - lookback : 0n;
+  signal?: AbortSignal
+): Promise<{ ids: bigint[]; incomplete: boolean }> {
+  const { logs, incomplete } = await scanEventLogs(client, {
+    address: governanceAddress,
+    event: withdrawInitiatedEvent,
+    argsList: recipients.map((r) => ({ recipient: r })),
+    signal,
+    onChunkError: (err, fromBlock, toBlock) =>
+      console.warn(`useWithdrawals: getLogs failed for ${fromBlock}-${toBlock}`, err),
+  });
+
   const ids = new Set<bigint>();
-
-  for (let toBlock = blockNumber; toBlock >= endBlock; toBlock -= chunkSize) {
-    const fromBlock =
-      toBlock - chunkSize + 1n < endBlock ? endBlock : toBlock - chunkSize + 1n;
-
-    const perRecipient = await Promise.all(
-      recipients.map((r) =>
-        client
-          .getLogs({
-            address: governanceAddress,
-            event: withdrawInitiatedEvent,
-            args: { recipient: r },
-            fromBlock,
-            toBlock,
-          })
-          .catch((err) => {
-            console.warn(
-              `useWithdrawals: getLogs failed for ${fromBlock}-${toBlock}`,
-              err
-            );
-            return [];
-          })
-      )
-    );
-    for (const logs of perRecipient) {
-      for (const log of logs) {
-        if (log.args.withdrawalId != null) ids.add(log.args.withdrawalId);
-      }
-    }
+  for (const log of logs) {
+    if (log.args.withdrawalId != null) ids.add(log.args.withdrawalId);
   }
-
-  return Array.from(ids);
+  return { ids: Array.from(ids), incomplete };
 }
 
 // Multicalls getWithdrawal(id) for each id and filters by claimed=false +
@@ -184,12 +157,14 @@ export function useWithdrawals(recipients: Address[]): UseWithdrawalsResult {
     enabled: !!publicClient && normalizedRecipients.length > 0,
     refetchInterval: REFETCH_INTERVAL,
     refetchIntervalInBackground: false,
-    queryFn: async (): Promise<WithdrawalInfo[]> => {
-      const ids = await scanWithdrawalIds(
+    queryFn: async ({ signal }): Promise<{
+      withdrawals: WithdrawalInfo[];
+      scanIncomplete: boolean;
+    }> => {
+      const { ids, incomplete } = await scanWithdrawalIds(
         publicClient!,
         normalizedRecipients as Address[],
-        MAX_BLOCKS_BACK,
-        CHUNK_SIZE
+        signal
       );
       const recipientSet = new Set(normalizedRecipients);
       // Dev-only: NEXT_PUBLIC_DEV_NOW_OVERRIDE (unix seconds) simulates a
@@ -198,17 +173,22 @@ export function useWithdrawals(recipients: Address[]): UseWithdrawalsResult {
       const nowSec = override
         ? BigInt(override)
         : BigInt(Math.floor(Date.now() / 1000));
-      return resolveWithdrawals(publicClient!, ids, recipientSet, nowSec);
+      const withdrawals = await resolveWithdrawals(
+        publicClient!,
+        ids,
+        recipientSet,
+        nowSec
+      );
+      return { withdrawals, scanIncomplete: incomplete };
     },
   });
 
   return {
-    withdrawals: query.data ?? [],
+    withdrawals: query.data?.withdrawals ?? [],
     withdrawalDelay,
     isLoading: query.isLoading,
+    scanIncomplete: query.data?.scanIncomplete ?? false,
     error: query.error,
-    refetch: () => {
-      query.refetch();
-    },
+    refetch: () => query.refetch(),
   };
 }

@@ -85,10 +85,6 @@ export function getActiveThrough(
   return getPendingThrough(creation, config) + config.votingDuration;
 }
 
-export function getQuorumPercentage(quorum: bigint): number {
-  return (Number(quorum) / 1e18) * 100;
-}
-
 export function isTerminalState(state: ProposalState): boolean {
   return [
     ProposalState.Rejected,
@@ -126,6 +122,7 @@ async function fetchExecutionTxHash(
       return logs[0].transactionHash;
     }
   } catch (error) {
+    // Deliberate degradation: the Etherscan link is decorative, so drop it rather than fail the fetch.
     console.error(`Failed to fetch execution tx for proposal ${proposalId}:`, error);
   }
   return undefined;
@@ -268,104 +265,85 @@ export async function fetchProposalPage(
   }));
 }
 
-/**
- * Fetch a single proposal with its state and total power.
- * Uses 1 multicall + 1 single call (for URI).
- */
+// Single-proposal fetch (1 multicall + 1 URI call). proposal is null only for
+// a nonexistent id; transport errors propagate (swallowed ones read as false 404s).
 export async function fetchProposalByIdWithPower(
   id: number
 ): Promise<{ proposal: Proposal | null; totalPower: bigint }> {
   if (!governanceAddress) return { proposal: null, totalPower: 0n };
 
-  try {
-    const results = await publicClient.multicall({
-      contracts: [
-        {
-          abi: GovernanceAbi,
-          address: governanceAddress,
-          functionName: "getProposal",
-          args: [BigInt(id)],
-        },
-        {
-          abi: GovernanceAbi,
-          address: governanceAddress,
-          functionName: "getProposalState",
-          args: [BigInt(id)],
-        },
-        {
-          abi: GovernanceAbi,
-          address: governanceAddress,
-          functionName: "totalPowerNow",
-        },
-      ],
-    });
-
-    if (results[0].status !== "success" || !results[0].result) {
-      return { proposal: null, totalPower: 0n };
-    }
-
-    const rawData = results[0].result as unknown as {
-      configuration: ProposalConfiguration;
-      payload: Address;
-      creator: Address;
-      creation: bigint;
-      summedBallot: Ballot;
-    };
-    const currentState = (results[1].result ?? ProposalState.Pending) as ProposalState;
-    const totalPower = (results[2].result ?? 0n) as bigint;
-
-    // Get URI (check cache first)
-    let uri: string | undefined;
-    if (uriCache.has(rawData.payload)) {
-      uri = uriCache.get(rawData.payload);
-    } else {
-      try {
-        const rawUri = await publicClient.readContract({
-          abi: PayloadAbi,
-          address: rawData.payload,
-          functionName: "getURI",
-        });
-        uri = rawUri && rawUri.trim() !== "" ? rawUri : undefined;
-      } catch {
-        uri = undefined;
-      }
-      uriCache.set(rawData.payload, uri);
-    }
-
-    // Fetch execution tx hash for executed proposals
-    const executionTxHash =
-      currentState === ProposalState.Executed
-        ? await fetchExecutionTxHash(BigInt(id))
-        : undefined;
-
-    return {
-      proposal: {
-        id: BigInt(id),
-        state: currentState,
-        config: rawData.configuration,
-        payloadAddress: rawData.payload,
-        proposerAddress: rawData.creator,
-        creationTimestamp: rawData.creation,
-        ballot: rawData.summedBallot,
-        uri,
-        executionTxHash,
+  const results = await publicClient.multicall({
+    contracts: [
+      {
+        abi: GovernanceAbi,
+        address: governanceAddress,
+        functionName: "getProposal",
+        args: [BigInt(id)],
       },
-      totalPower,
-    };
-  } catch (error) {
-    console.error(`Failed to fetch proposal ${id}:`, error);
+      {
+        abi: GovernanceAbi,
+        address: governanceAddress,
+        functionName: "getProposalState",
+        args: [BigInt(id)],
+      },
+      {
+        abi: GovernanceAbi,
+        address: governanceAddress,
+        functionName: "totalPowerNow",
+      },
+    ],
+  });
+
+  if (results[0].status !== "success" || !results[0].result) {
     return { proposal: null, totalPower: 0n };
   }
-}
 
-// ─── Standalone Helpers (used by other hooks) ───────────────────────────────
+  const rawData = results[0].result as unknown as {
+    configuration: ProposalConfiguration;
+    payload: Address;
+    creator: Address;
+    creation: bigint;
+    summedBallot: Ballot;
+  };
+  const currentState = (results[1].result ?? ProposalState.Pending) as ProposalState;
+  const totalPower = (results[2].result ?? 0n) as bigint;
 
-export async function fetchTotalPower(): Promise<bigint> {
-  if (!governanceAddress) return 0n;
+  // Get URI (check cache first)
+  let uri: string | undefined;
+  if (uriCache.has(rawData.payload)) {
+    uri = uriCache.get(rawData.payload);
+  } else {
+    try {
+      const rawUri = await publicClient.readContract({
+        abi: PayloadAbi,
+        address: rawData.payload,
+        functionName: "getURI",
+      });
+      uri = rawUri && rawUri.trim() !== "" ? rawUri : undefined;
+    } catch {
+      uri = undefined;
+    }
+    uriCache.set(rawData.payload, uri);
+  }
 
-  return publicClient.readContract({
-    abi: GovernanceAbi,
-    address: governanceAddress,
-    functionName: "totalPowerNow",
-  });
+  // Fetch execution tx hash for executed proposals
+  const executionTxHash =
+    currentState === ProposalState.Executed
+      ? await fetchExecutionTxHash(BigInt(id))
+      : undefined;
+
+  return {
+    proposal: {
+      id: BigInt(id),
+      state: currentState,
+      config: rawData.configuration,
+      payloadAddress: rawData.payload,
+      proposerAddress: rawData.creator,
+      creationTimestamp: rawData.creation,
+      ballot: rawData.summedBallot,
+      uri,
+      executionTxHash,
+    },
+    totalPower,
+  };
 }

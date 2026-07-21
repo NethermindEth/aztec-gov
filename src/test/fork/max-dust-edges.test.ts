@@ -14,9 +14,6 @@
  * Every mutating test is snapshot+revert wrapped.
  */
 import {
-  createPublicClient,
-  http,
-  parseAbiItem,
   encodeFunctionData,
   getAddress,
   toHex,
@@ -25,65 +22,29 @@ import {
   type Address,
   type Hash,
 } from "viem";
-import { mainnet } from "viem/chains";
-
-const RPC = "http://localhost:8545";
-const AZT = getAddress("0xa27Ec0006E59F245217ff08CD52A7E8b169e62d2");
-const GOV = getAddress("0x1102471eb3378fee427121c9efcea452e4b6b75e");
-const MULTICALL3 = getAddress("0xcA11bde05977b3631167028862bE2a173976CA11");
-
-const USER = getAddress("0x78FA029F04251cc810DFF72CCC7B4764DBC16899");
-const USER_ATP = getAddress("0x2C4464618f9b5d7601bED221Ad02cABB285245D8");
-const USER_STAKER = getAddress("0xEaDd1e65dCCeB249156bB3E558479418E19B4fC0");
-
-// Anvil dev account 0 with a known private key, deterministic across forks
-const FRESH_WALLET = getAddress("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
-
-const KNOWN_ATPS: Record<string, string> = {
-  "0x78fa029f04251cc810dff72ccc7b4764dbc16899": "0x2C4464618f9b5d7601bED221Ad02cABB285245D8",
-  "0x256be0de90e34244bdef783de58cac27ae9ffeb3": "0x4fd0630531df9fa74083c4282bae2bde6a6a255c",
-  "0x454a3a899dee11a00e05a758b486c45f3b0d829f": "0x6569406eb6c357d82ffa44724538fc930ae576c4",
-  "0x2b9338f90182dab6d485dc2ff2e185407f17b442": "0x842ce8ac778dc738967016eef9a3dbd2c0b192ab",
-  "0xb6b598d182b266d071c0e80ff57abb90fdd0fb0f": "0xcb13993ea6204e855ce61a6ffda8ca328a32866b",
-};
-
-const c = createPublicClient({ chain: mainnet, transport: http(RPC) });
-
-const balanceOfAbi = parseAbiItem("function balanceOf(address) view returns (uint256)");
-const allowanceAbi = parseAbiItem("function allowance(address,address) view returns (uint256)");
-const erc20ApproveAbi = parseAbiItem("function approve(address,uint256) returns (bool)");
-const getOperatorAbi = parseAbiItem("function getOperator() view returns (address)");
-const approveStakerAbi = parseAbiItem("function approveStaker(uint256 _amount)");
-const depositIntoGovAbi = parseAbiItem("function depositIntoGovernance(uint256 _amount)");
-
-async function rpc<T = unknown>(method: string, params: unknown[] = []): Promise<T> {
-  const r = await fetch(RPC, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  const j = (await r.json()) as { result?: T; error?: { message: string } };
-  if (j.error) throw new Error(`${method}: ${j.error.message}`);
-  return j.result as T;
-}
-
-function fail(msg: string): never {
-  console.log(`✗ ${msg}`);
-  process.exit(1);
-}
-function pass(msg: string): void {
-  console.log(`✓ ${msg}`);
-}
-function section(title: string): void {
-  console.log(`  ${title}`);
-}
-
-async function snapshot(): Promise<string> {
-  return rpc<string>("evm_snapshot");
-}
-async function revert(id: string): Promise<void> {
-  await rpc("evm_revert", [id]);
-}
+import {
+  client as c,
+  AZT,
+  GOV,
+  MULTICALL3,
+  USER,
+  ATP as USER_ATP,
+  STAKER as USER_STAKER,
+  DEV_ACCOUNT as FRESH_WALLET,
+  KNOWN_ATPS,
+  balanceOfAbi,
+  allowanceAbi,
+  erc20ApproveAbi,
+  getOperatorAbi,
+  approveStakerAbi,
+  depositIntoGovAbi,
+  rpc,
+  fail,
+  pass,
+  section,
+  snapshot,
+  revert,
+} from "./context";
 
 // Mirror of src/lib/format.ts:bigintToRaw; keep in sync
 function bigintToRaw(value: bigint): string {
@@ -331,7 +292,7 @@ async function main() {
   // C. Multi-ATP getOperator sanity across all 5 known ATPs
   section("C. Multi-ATP getOperator: sanity across all 5 known ATPs");
 
-  for (const [beneficiary, atpAddr] of Object.entries(KNOWN_ATPS)) {
+  for (const [beneficiary, [atpAddr]] of Object.entries(KNOWN_ATPS)) {
     const atp = getAddress(atpAddr);
     const expectedOp = getAddress(beneficiary);
     try {
