@@ -325,6 +325,120 @@ export const GSEAbi = [
     outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "getVotingPowerAt",
+    inputs: [
+      { name: "_delegatee", type: "address" },
+      { name: "_timestamp", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getPowerUsed",
+    inputs: [
+      { name: "_delegatee", type: "address" },
+      { name: "_proposalId", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "delegate",
+    inputs: [
+      { name: "_instance", type: "address" },
+      { name: "_attester", type: "address" },
+      { name: "_delegatee", type: "address" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  // Spends power delegated to msg.sender; the GSE forwards to Governance.vote.
+  {
+    type: "function",
+    name: "vote",
+    inputs: [
+      { name: "_proposalId", type: "uint256" },
+      { name: "_amount", type: "uint256" },
+      { name: "_support", type: "bool" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "getDelegatee",
+    inputs: [
+      { name: "_instance", type: "address" },
+      { name: "_attester", type: "address" },
+    ],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getWithdrawer",
+    inputs: [{ name: "_attester", type: "address" }],
+    outputs: [{ name: "withdrawer", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "balanceOf",
+    inputs: [
+      { name: "_instance", type: "address" },
+      { name: "_attester", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getBonusInstanceAddress",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "pure",
+  },
+  {
+    type: "function",
+    name: "getLatestRollup",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "supplyOf",
+    inputs: [{ name: "_instance", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  // Attester enumeration lets discovery run on current state instead of
+  // archive logs, which most public RPCs no longer serve.
+  {
+    type: "function",
+    name: "getAttesterCountAtTime",
+    inputs: [
+      { name: "_instance", type: "address" },
+      { name: "_timestamp", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getAttestersFromIndicesAtTime",
+    inputs: [
+      { name: "_instance", type: "address" },
+      { name: "_timestamp", type: "uint256" },
+      { name: "_indices", type: "uint256[]" },
+    ],
+    outputs: [{ name: "", type: "address[]" }],
+    stateMutability: "view",
+  },
 ] as const;
 
 export const PayloadAbi = [
@@ -362,6 +476,52 @@ export const StakerAbi = [
     inputs: [{ name: "_amount", type: "uint256" }],
     outputs: [],
     stateMutability: "nonpayable",
+  },
+  // Re-delegates a Staker-held stake; resolves the instance from the registry
+  // version, so it cannot reach bonus-instance ("follow latest rollup") stake.
+  {
+    type: "function",
+    name: "delegate",
+    inputs: [
+      { name: "_version", type: "uint256" },
+      { name: "_attester", type: "address" },
+      { name: "_delegatee", type: "address" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "ROLLUP_REGISTRY",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+] as const;
+
+// Aztec Registry (rollup versions). Used to translate a rollup instance
+// address into the version number Staker.delegate expects.
+export const RegistryAbi = [
+  {
+    type: "function",
+    name: "numberOfVersions",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getVersion",
+    inputs: [{ name: "_index", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getRollup",
+    inputs: [{ name: "_version", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
   },
 ] as const;
 

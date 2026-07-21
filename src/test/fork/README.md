@@ -46,6 +46,7 @@ matter.
 | [`withdraw.test.ts`](./withdraw.test.ts) | Full withdraw lifecycle across 5 known stuck-users: initiate, time-advance, finalize, `recipient = ATP` invariant |
 | [`max-dust.test.ts`](./max-dust.test.ts) | Post-audit fix: `ATP.getOperator` read; MAX-deposit and MAX-withdraw both land at exactly 0 wei |
 | [`max-dust-edges.test.ts`](./max-dust-edges.test.ts) | Wallet-path MAX dust via `ERC20.approve`, approve-then-revert recovery, multi-ATP operators, multicall handling of missing `getOperator` selector |
+| [`delegate.test.ts`](./delegate.test.ts) | GSE delegation (issue #13): attester-enumeration discovery, `GSE.delegate` as a real withdrawer, withdrawer-only auth, delegated `GSE.vote` into a fresh proposal, snapshot/powerUsed math parity with `useGseProposalPower` |
 
 ## What this layer can't catch
 

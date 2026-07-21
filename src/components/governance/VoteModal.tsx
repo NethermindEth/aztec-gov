@@ -4,15 +4,20 @@ import { useEffect, useCallback, useReducer } from "react";
 import { createPortal } from "react-dom";
 import { useWallet } from "@/hooks/useWallet";
 import { useVotingPower } from "@/hooks/useVotingPower";
-import { useVote, type VoteStep } from "@/hooks/useVote";
+import { useGseProposalPower } from "@/hooks/useGseProposalPower";
+import { useVote, type VoteStep, type VoteRoute } from "@/hooks/useVote";
 import { TransactionFailedScreen } from "@/components/governance/TransactionFailedScreen";
 import { formatVotesWithUnit, getExplorerUrl, parseAztAmount, bigintToRaw, formatWithCommas, truncateAddress } from "@/lib/format";
-import type { Address, Hex } from "viem";
+import type { Hex } from "viem";
 
-type VoteSource = { kind: "direct" } | { kind: "staker"; address: Address };
+// A vote source is either the wallet's own deposits ("direct") or one of the
+// routed paths useVote knows how to dispatch (staker, gse).
+type VoteSource = { kind: "direct" } | VoteRoute;
 
 function sourceKey(source: VoteSource): string {
-  return source.kind === "direct" ? "direct" : `staker:${source.address}`;
+  if (source.kind === "direct") return "direct";
+  if (source.kind === "gse") return "gse";
+  return `staker:${source.address}`;
 }
 
 // Phases:
@@ -290,6 +295,12 @@ export function VoteModal({
 }: VoteModalProps) {
   const { address, chain } = useWallet();
   const votingPower = useVotingPower(address, BigInt(totalSupply));
+  // GSE power is spent via GSE.vote with a per-proposal snapshot max; gated
+  // on isOpen because this modal is mounted (closed) per proposal row.
+  const gsePower = useGseProposalPower(address, proposalId, {
+    enabled: isOpen,
+    livePowerFallback: votingPower.gsePower,
+  });
   const { vote, step, txHash, isSuccess, isError, error, reset } = useVote();
 
   const [state, dispatch] = useReducer(
@@ -301,7 +312,7 @@ export function VoteModal({
   const isSubmitting = phase.kind === "submitting";
   const currentStep: VoteStep = isSubmitting ? phase.step : "idle";
 
-  const directPower = votingPower.governancePower + votingPower.gsePower;
+  const directPower = votingPower.governancePower;
 
   // Direct is always listed so the picker stays visible even when all power is zero.
   const availableSources: { source: VoteSource; power: bigint; label: string }[] = [
@@ -310,6 +321,15 @@ export function VoteModal({
       power: canDeposit ? directPower + votingPower.walletBalance : directPower,
       label: "Direct Deposit",
     },
+    ...(gsePower.available > 0n
+      ? [
+          {
+            source: { kind: "gse" as const },
+            power: gsePower.available,
+            label: "Delegated Power",
+          },
+        ]
+      : []),
     ...votingPower.stakerPowers
       .filter((s) => s.power > 0n)
       .map((s) => ({
@@ -330,7 +350,7 @@ export function VoteModal({
   // Depending on availableSources directly would re-init on every render;
   // the reducer also guards against double-init.
   useEffect(() => {
-    if (!isOpen || votingPower.isLoading) return;
+    if (!isOpen || votingPower.isLoading || gsePower.isLoading) return;
     const best = [...availableSources].sort((a, b) =>
       a.power > b.power ? -1 : a.power < b.power ? 1 : 0
     )[0];
@@ -344,8 +364,9 @@ export function VoteModal({
   }, [
     isOpen,
     votingPower.isLoading,
+    gsePower.isLoading,
     votingPower.governancePower,
-    votingPower.gsePower,
+    gsePower.available,
     votingPower.walletBalance,
     votingPower.totalStakerPower,
     canDeposit,
@@ -385,18 +406,13 @@ export function VoteModal({
 
   const parsedAmount = parseAztAmount(amountInput);
 
-  const selectedSourcePower = (() => {
-    if (source.kind === "staker") {
-      return (
-        votingPower.stakerPowers.find(
-          (s) => s.stakerAddress === source.address
-        )?.power ?? 0n
-      );
-    }
-    return canDeposit ? directPower + votingPower.walletBalance : directPower;
-  })();
+  // availableSources already pairs each source with its power; later sites
+  // look power up instead of re-deriving it.
+  const powerOf = (s: VoteSource): bigint =>
+    availableSources.find((entry) => sourceKey(entry.source) === sourceKey(s))
+      ?.power ?? 0n;
 
-  const availablePower = selectedSourcePower;
+  const availablePower = powerOf(source);
   const isValidAmount =
     parsedAmount !== null && parsedAmount <= availablePower;
 
@@ -417,18 +433,10 @@ export function VoteModal({
   };
 
   const handleSourceChange = (next: VoteSource) => {
-    const nextPower =
-      next.kind === "staker"
-        ? votingPower.stakerPowers.find(
-            (s) => s.stakerAddress === next.address
-          )?.power ?? 0n
-        : canDeposit
-          ? directPower + votingPower.walletBalance
-          : directPower;
     dispatch({
       type: "SELECT_SOURCE",
       source: next,
-      amount: formatWithCommas(bigintToRaw(nextPower)),
+      amount: formatWithCommas(bigintToRaw(powerOf(next))),
     });
   };
 
@@ -439,7 +447,6 @@ export function VoteModal({
 
   const handleConfirm = () => {
     if (!parsedAmount || !isValidAmount || !address) return;
-    const stakerAddress = source.kind === "staker" ? source.address : undefined;
     dispatch({ type: "SUBMIT_STARTED" });
     vote(
       proposalId,
@@ -447,7 +454,7 @@ export function VoteModal({
       support,
       needsDeposit ? depositNeeded : 0n,
       address,
-      stakerAddress
+      source.kind === "direct" ? undefined : source
     );
   };
 

@@ -13,6 +13,10 @@ RainbowKit, modal logic, invalidation) runs production code.
 3. `NEXT_PUBLIC_DEV_BENEFICIARY=0x78FA029F04251cc810DFF72CCC7B4764DBC16899`
    in `.env.local` so the indexer surfaces the canonical user's ATP
    regardless of the connected wallet.
+   `NEXT_PUBLIC_GSE_ADDRESS=0xa92ecFD0E70c9cd5E5cd76c50Af0F7Da93567a4f`
+   (the mainnet GSE, live on the fork) so delegation discovery is active;
+   with `NEXT_PUBLIC_E2E=1` the attester sweep is bounded to the head of
+   the set to keep cold-fork reads within RPC timeouts.
 4. The fork ATP balance pre-poked to the dusty fixture value:
    ```bash
    ./src/test/manual/setup-fork.sh
@@ -36,6 +40,7 @@ npx playwright test --grep "MAX preserves"    # one test by name
 | [`withdraw-modal.spec.ts`](./withdraw-modal.spec.ts) | Same coverage shape for withdraw: picker, MAX dust, Cancel, delay note |
 | [`integration.spec.ts`](./integration.spec.ts) | Full deposit and withdraw flows including invalidation: after a tx the CTAs update without a manual refresh |
 | [`edge-cases.spec.ts`](./edge-cases.spec.ts) | Operator-mismatch UI, auto-select skips disabled vault, modal close mid-flow, disconnected state |
+| [`delegation.spec.ts`](./delegation.spec.ts) | GSE delegation (issue #13): panel section + modal against real fork state, delegate-to-self tx flow, post-tx invalidation. Discovers its actor at runtime (first bonus attester with an EOA withdrawer) and pre-warms the fork cache in `beforeAll`. Needs `NEXT_PUBLIC_GSE_ADDRESS` set to the mainnet GSE |
 
 ## How wallet mocking works
 

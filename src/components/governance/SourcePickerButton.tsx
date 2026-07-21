@@ -1,14 +1,18 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { formatVotesWithUnit } from "@/lib/format";
 
 interface SourcePickerButtonProps {
   label: string;
-  power: bigint;
   selected: boolean;
-  disabled: boolean;
-  showDivider: boolean;
   onSelect: () => void;
+  /** Right-slot amount; rendered via formatVotesWithUnit unless `detail` is given. */
+  power?: bigint;
+  /** Overrides the right slot (e.g. an address instead of an amount). */
+  detail?: ReactNode;
+  disabled?: boolean;
+  showDivider?: boolean;
   sublabel?: string;
   title?: string;
 }
@@ -16,9 +20,10 @@ interface SourcePickerButtonProps {
 export function SourcePickerButton({
   label,
   power,
+  detail,
   selected,
-  disabled,
-  showDivider,
+  disabled = false,
+  showDivider = false,
   onSelect,
   sublabel,
   title,
@@ -69,7 +74,7 @@ export function SourcePickerButton({
         </div>
       </div>
       <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>
-        {formatVotesWithUnit(power)}
+        {detail ?? (power !== undefined ? formatVotesWithUnit(power) : null)}
       </span>
     </button>
   );

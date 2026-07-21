@@ -24,3 +24,11 @@ export function useInvalidateWithdrawals() {
     queryClient.invalidateQueries({ queryKey: ["governance-withdrawals"] });
   }, [queryClient]);
 }
+
+// Invalidates GSE delegation discovery so delegatee changes surface immediately.
+export function useInvalidateDelegations() {
+  const queryClient = useQueryClient();
+  return useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["gse-delegations"] });
+  }, [queryClient]);
+}
