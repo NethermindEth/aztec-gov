@@ -18,6 +18,25 @@ import type { ProposalDetailView, ProposalsPageData } from "@/lib/types";
 
 export type { ProposalsPageData } from "@/lib/types";
 
+// Client rebuilds carry only on-chain data; enrichment (titles, summaries,
+// forum links) is server-side, so copy it forward from the previous snapshot.
+function carryEnrichment<T extends ProposalDetailView | ProposalsPageData["proposals"][number]>(
+  prev: T,
+  next: T
+): void {
+  if (!prev.enriched || next.enriched) return;
+  next.enriched = true;
+  next.title = prev.title;
+  next.description = prev.description;
+  if (prev.azupMeta) next.azupMeta = prev.azupMeta;
+  if (prev.forumUrl) next.forumUrl = prev.forumUrl;
+  if (prev.githubInfo && next.githubInfo) {
+    next.githubInfo.apiTitle = prev.githubInfo.apiTitle;
+    next.githubInfo.apiState = prev.githubInfo.apiState;
+    next.githubInfo.apiDescription = prev.githubInfo.apiDescription;
+  }
+}
+
 // ─── Listing (paginated) ────────────────────────────────────────────────────
 
 export interface ProposalQueryParams {
@@ -55,17 +74,7 @@ export function useProposalsQuery(
       if (prev) {
         for (const view of data.proposals) {
           const prevView = prev.proposals.find((p) => p.numericId === view.numericId);
-          if (!prevView) continue;
-          if (prevView.azupMeta && !view.azupMeta) {
-            view.azupMeta = prevView.azupMeta;
-            view.title = prevView.title;
-            view.description = prevView.description;
-          }
-          if (prevView.githubInfo?.apiTitle && !view.githubInfo?.apiTitle && view.githubInfo) {
-            view.githubInfo.apiTitle = prevView.githubInfo.apiTitle;
-            view.githubInfo.apiState = prevView.githubInfo.apiState;
-            view.githubInfo.apiDescription = prevView.githubInfo.apiDescription;
-          }
+          if (prevView) carryEnrichment(prevView, view);
         }
       }
 
@@ -96,18 +105,7 @@ export function useProposalQuery(proposalId: number, initialData?: ProposalDetai
 
       // Preserve server-enriched fields across client refetches
       const prev = queryClient.getQueryData<ProposalDetailView>(queryKey);
-      if (prev) {
-        if (prev.azupMeta && !view.azupMeta) {
-          view.azupMeta = prev.azupMeta;
-          view.title = prev.title;
-          view.description = prev.description;
-        }
-        if (prev.githubInfo?.apiTitle && !view.githubInfo?.apiTitle && view.githubInfo) {
-          view.githubInfo.apiTitle = prev.githubInfo.apiTitle;
-          view.githubInfo.apiState = prev.githubInfo.apiState;
-          view.githubInfo.apiDescription = prev.githubInfo.apiDescription;
-        }
-      }
+      if (prev) carryEnrichment(prev, view);
 
       return view;
     },

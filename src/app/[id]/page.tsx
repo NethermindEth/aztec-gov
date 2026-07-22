@@ -3,8 +3,7 @@ import { fetchProposalByIdWithPower } from "@/lib/governance";
 import { buildProposalDetailView } from "@/lib/proposal-view";
 import { buildKey } from "@/lib/query-keys";
 import { cachedFetch } from "@/lib/cache";
-import { fetchGitHubMeta } from "@/lib/github";
-import { fetchAzupMeta } from "@/lib/azup";
+import { enrichProposalView } from "@/lib/proposal-enrich";
 import { ProposalDetailClient } from "./ProposalDetailClient";
 
 interface PageProps {
@@ -27,28 +26,7 @@ export default async function ProposalDetailPage({ params }: PageProps) {
 
   const initialData = buildProposalDetailView(proposal, totalPower, numericId);
 
-  // Enrich with AZUP metadata first, then fall back to GitHub API
-  if (initialData.uri) {
-    const azupMeta = await fetchAzupMeta(initialData.uri);
-    if (azupMeta) {
-      initialData.title = azupMeta.title;
-      initialData.description = azupMeta.description ?? azupMeta.abstract ?? initialData.description;
-      initialData.azupMeta = azupMeta;
-    }
-  }
-
-  if (!initialData.azupMeta && initialData.githubInfo) {
-    const meta = await fetchGitHubMeta(initialData.githubInfo);
-    if (meta) {
-      if (meta.title) {
-        initialData.githubInfo.apiTitle = meta.title;
-        initialData.title = meta.title;
-        initialData.description = meta.title;
-      }
-      if (meta.state) initialData.githubInfo.apiState = meta.state;
-      if (meta.description) initialData.githubInfo.apiDescription = meta.description;
-    }
-  }
+  await enrichProposalView(initialData, initialData.uri);
 
   return <ProposalDetailClient id={numericId} initialData={initialData} />;
 }

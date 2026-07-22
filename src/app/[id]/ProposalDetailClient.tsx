@@ -18,7 +18,6 @@ import { GitHubReference } from "@/components/governance/GitHubReference";
 import { ForumReference } from "@/components/governance/ForumReference";
 import { VoteModal } from "@/components/governance/VoteModal";
 import { DepositModal } from "@/components/governance/DepositModal";
-import { getForumUrl } from "@/lib/forum";
 import { ProposalNotFoundError } from "@/lib/errors";
 import { RetryButton } from "@/components/ui/RetryButton";
 
@@ -107,7 +106,7 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
     );
   }
 
-  const forumUrl = p.azupMeta?.discussionsTo?.replace(/^https?:\/\//, "") ?? getForumUrl(p.numericId);
+  const forumUrl = p.forumUrl;
 
   return (
     <div
@@ -202,20 +201,22 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
             <ProposalLifecycle steps={p.lifecycleSteps} />
 
             {/* Description */}
-            <div
-              className="border p-6"
-              style={{ borderColor: "var(--border-default)" }}
-            >
-              <h3
-                className="text-sm font-medium tracking-widest uppercase mb-5"
-                style={{ color: "var(--text-primary)" }}
+            {p.description && (
+              <div
+                className="border p-6"
+                style={{ borderColor: "var(--border-default)" }}
               >
-                Description
-              </h3>
-              <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                {p.description}
-              </p>
-            </div>
+                <h3
+                  className="text-sm font-medium tracking-widest uppercase mb-5"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  Description
+                </h3>
+                <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                  {p.description}
+                </p>
+              </div>
+            )}
 
             {/* GitHub Reference */}
             {p.uri && (

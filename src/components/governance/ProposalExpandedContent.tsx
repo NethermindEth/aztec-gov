@@ -3,7 +3,6 @@ import { VoteBar } from "@/components/ui/VoteBar";
 import { QuorumBar } from "@/components/ui/QuorumBar";
 import { EtherscanLink } from "@/components/ui/EtherscanLink";
 import { useWallet } from "@/hooks/useWallet";
-import { getForumUrl } from "@/lib/forum";
 import { ProposalLifecycle } from "@/components/governance/ProposalLifecycle";
 import type { ProposalView } from "@/lib/types";
 
@@ -18,14 +17,7 @@ export function ProposalExpandedContent({ proposal, onVote, onDeposit }: Proposa
   const isActive = proposal.status === "Active";
   const isPending = proposal.status === "Pending";
   const { isConnected, connect } = useWallet();
-  const forumUrl = proposal.azupMeta?.discussionsTo?.replace(/^https?:\/\//, "") ?? getForumUrl(proposal.numericId);
-
-  // description is "Payload: 0x..." fallback — not useful as a snippet
-  const hasRealDescription =
-    proposal.description && !proposal.description.startsWith("Payload:");
-
-  // GitHub API title is the actual PR/issue name — more useful than the parsed URL slug
-  const githubTitle = proposal.githubInfo?.apiTitle;
+  const forumUrl = proposal.forumUrl;
 
   return (
     <div
@@ -36,13 +28,12 @@ export function ProposalExpandedContent({ proposal, onVote, onDeposit }: Proposa
       <div className="flex flex-col md:flex-row gap-4 md:gap-8">
         {/* Left column (~50%): text info */}
         <div className="flex flex-col gap-3 w-full md:w-[50%] md:shrink-0 min-w-0">
-          {/* Description: real description or GitHub PR title */}
-          {(hasRealDescription || githubTitle) && (
+          {proposal.description && (
             <p
               className="text-xs leading-relaxed line-clamp-2"
               style={{ color: "var(--text-secondary)" }}
             >
-              {hasRealDescription ? proposal.description : githubTitle}
+              {proposal.description}
             </p>
           )}
 

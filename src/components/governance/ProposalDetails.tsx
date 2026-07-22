@@ -40,8 +40,8 @@ export function ProposalDetails({
   }
 
   if (forumUrl) {
-    const displayUrl = forumUrl.replace(/^https?:\/\//, "");
-    rows.push({ label: "Forum", value: displayUrl, href: forumUrl.startsWith("http") ? forumUrl : `https://${forumUrl}` });
+    // forumUrl is always protocol-less (normalizeForumUrl / FORUM_URLS).
+    rows.push({ label: "Forum", value: forumUrl, href: `https://${forumUrl}` });
   }
 
   rows.push({ label: "Created", value: createdDate });
