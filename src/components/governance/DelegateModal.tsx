@@ -369,8 +369,9 @@ export function DelegateModal({ isOpen, onClose }: DelegateModalProps) {
                             className="text-[10px]"
                             style={{ color: "var(--text-muted)" }}
                           >
-                            Held by your vault&apos;s Staker, which cannot
-                            re-delegate this position yet.
+                            Held by your vault&apos;s Staker; by design this
+                            stake stays delegated to the rollup, which votes
+                            on your behalf for signalled proposals.
                           </span>
                         </div>
                         <span
