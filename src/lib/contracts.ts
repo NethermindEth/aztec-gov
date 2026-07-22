@@ -449,6 +449,23 @@ export const PayloadAbi = [
     outputs: [{ name: "", type: "string", internalType: "string" }],
     stateMutability: "view",
   },
+  // The calls a proposal executes if it passes.
+  {
+    type: "function",
+    name: "getActions",
+    inputs: [],
+    outputs: [
+      {
+        name: "",
+        type: "tuple[]",
+        components: [
+          { name: "target", type: "address" },
+          { name: "data", type: "bytes" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
 ] as const;
 
 export const StakerAbi = [

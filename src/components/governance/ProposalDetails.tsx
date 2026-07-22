@@ -11,7 +11,7 @@ interface DetailRow {
 
 interface ProposalDetailsProps {
   status: Status;
-  proposer: string;
+  author?: string;
   payloadAddress?: string;
   discussionUrl?: string;
   createdDate: string;
@@ -22,7 +22,7 @@ interface ProposalDetailsProps {
 
 export function ProposalDetails({
   status,
-  proposer,
+  author,
   payloadAddress,
   discussionUrl,
   createdDate,
@@ -32,9 +32,13 @@ export function ProposalDetails({
 }: ProposalDetailsProps) {
   const explorerUrl = getExplorerUrl();
 
-  const rows: DetailRow[] = [
-    { label: "Proposer", value: truncateAddress(proposer), href: `${explorerUrl}/address/${proposer}` },
-  ];
+  const rows: DetailRow[] = [];
+
+  // The on-chain creator is the GovernanceProposer contract (same for every
+  // proposal), so surface the AZUP author instead when we have it.
+  if (author) {
+    rows.push({ label: "Author", value: author });
+  }
 
   if (payloadAddress && (status === "Active" || status === "Pending" || status === "Executed")) {
     rows.push({ label: "Payload", value: truncateAddress(payloadAddress), href: `${explorerUrl}/address/${payloadAddress}` });

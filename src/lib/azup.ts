@@ -74,6 +74,44 @@ export async function fetchAzupContent(
  * Parse AZUP preamble from markdown content.
  * Extracts H1 title, table fields, and abstract section.
  */
+const PREAMBLE_FIELDS = new Set([
+  "azup",
+  "title",
+  "description",
+  "author",
+  "azips-included",
+  "discussions-to",
+  "created",
+]);
+
+// AZUPs write the preamble as either a horizontal table (field names in a
+// header row, values in the row below) or a vertical | key | value | one.
+// Returns lowercased field -> value, skipping template placeholders.
+function parsePreambleTable(markdown: string): Map<string, string> {
+  const fields = new Map<string, string>();
+  const rows = markdown
+    .split("\n")
+    .filter((l) => /^\s*\|/.test(l))
+    .map((l) =>
+      l.trim().replace(/^\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim().replace(/^`|`$/g, ""))
+    );
+  const dataRows = rows.filter((r) => !r.every((c) => /^:?-+:?$/.test(c)));
+  if (dataRows.length === 0) return fields;
+
+  const header = dataRows[0].map((c) => c.toLowerCase());
+  const set = (key: string, val: string) => {
+    if (val && !val.startsWith("[") && val !== "--") fields.set(key, val);
+  };
+
+  if (header.length > 2 && header.some((c) => PREAMBLE_FIELDS.has(c)) && dataRows[1]) {
+    const values = dataRows[1];
+    header.forEach((key, i) => set(key, (values[i] ?? "").trim()));
+  } else {
+    for (const r of dataRows) if (r.length >= 2) set(r[0].toLowerCase(), r[1].trim());
+  }
+  return fields;
+}
+
 export function parseAzupPreamble(markdown: string, sourceUrl: string): AzupMeta | null {
   // Extract title from H1: "# AZUP-X: Title" or "# Title"
   const h1Match = markdown.match(/^#\s+(.+)$/m);
@@ -91,18 +129,7 @@ export function parseAzupPreamble(markdown: string, sourceUrl: string): AzupMeta
     title = azupTitleMatch[2].trim();
   }
 
-  // Parse preamble table rows: | `field` | value | or | field | value |
-  const fields = new Map<string, string>();
-  const tableRowRegex = /^\|\s*`?(\w[\w-]*)`?\s*\|\s*(.+?)\s*\|/gm;
-  let rowMatch;
-  while ((rowMatch = tableRowRegex.exec(markdown)) !== null) {
-    const key = rowMatch[1].toLowerCase();
-    const val = rowMatch[2].trim();
-    // Skip placeholder values
-    if (val && !val.startsWith("[") && val !== "--") {
-      fields.set(key, val);
-    }
-  }
+  const fields = parsePreambleTable(markdown);
 
   // Override azupNumber from table if present
   const azupField = fields.get("azup");

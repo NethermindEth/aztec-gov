@@ -23,6 +23,16 @@ export interface GitHubInfo {
   apiDescription?: string;
 }
 
+// One call a proposal executes on-chain if it passes.
+export interface ProposalAction {
+  target: string;
+  /** Known-contract name for the target, when we recognize it. */
+  targetLabel?: string;
+  selector: string;
+  /** Decoded "name(argTypes)" from the selector, when resolvable. */
+  signature?: string;
+}
+
 // Server-fetched overrides projected onto a proposal view by applyEnrichment.
 // Only fields that resolved are present; a null enrichment means nothing found.
 export interface ProposalEnrichment {
@@ -43,7 +53,6 @@ export interface ProposalView {
   voteFor: number;
   voteAgainst: number;
   quorumPct: number;
-  proposer: string;
   timeRemaining: string;
   summaryText: string;
   isActive: boolean;
@@ -78,7 +87,6 @@ export interface ProposalDetailView {
   displayId: string;
   title: string;
   status: Status;
-  proposer: string;
   payloadAddress: string;
   uri?: string;
   description: string;
@@ -88,6 +96,8 @@ export interface ProposalDetailView {
   discussionUrl?: string;
   /** Server-fetched metadata overrides; presence signals enrichment ran with real data. */
   enrichment?: ProposalEnrichment;
+  /** On-chain calls this proposal executes; fetched server-side, immutable. */
+  actions?: ProposalAction[];
 
   // Vote data
   yeaPct: number;

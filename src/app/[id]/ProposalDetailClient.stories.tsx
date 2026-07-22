@@ -19,7 +19,6 @@ const activeProposal: ProposalDetailView = {
   displayId: "AZT-12",
   title: "Increase Validator Set to 150",
   status: "Active",
-  proposer: "0xA1b2C3d4E5f6A1b2C3d4E5f6A1b2C3d4E5f67890",
   payloadAddress: "0xPAYL00000000000000000000000000000000AD01",
   uri: "https://github.com/AztecProtocol/governance-proposals/blob/main/proposals/AZT-012.md",
   description:
@@ -54,7 +53,6 @@ const executedProposal: ProposalDetailView = {
   displayId: "AZT-11",
   title: "Treasury Diversification Strategy",
   status: "Executed",
-  proposer: "0xB2c3D4e5F6a7B2c3D4e5F6a7B2c3D4e5F6a78901",
   payloadAddress: "0xPAYL00000000000000000000000000000000AD02",
   executionTxHash: "0xabc123def456abc123def456abc123def456abc123def456abc123def456abc1",
   uri: "https://github.com/AztecProtocol/governance-proposals/blob/main/proposals/AZT-011.md",
@@ -91,7 +89,6 @@ const rejectedProposal: ProposalDetailView = {
   displayId: "AZT-09",
   title: "Reduce Block Time to 8 Seconds",
   status: "Rejected",
-  proposer: "0xC3d4E5f6A7b8C3d4E5f6A7b8C3d4E5f6A7b89012",
   payloadAddress: "0x2d3E00000000000000000000000000000000008f0A",
   uri: "https://github.com/AztecProtocol/governance-proposals/blob/main/proposals/AZT-009.md",
   description:
@@ -126,7 +123,6 @@ const expiredProposal: ProposalDetailView = {
   displayId: "AZT-08",
   title: "Sequencer Bond Increase",
   status: "Expired",
-  proposer: "0xD4e5F6a7B8c9D4e5F6a7B8c9D4e5F6a7B8c90123",
   payloadAddress: "0x6f7A00000000000000000000000000000000002b3C",
   uri: "https://github.com/AztecProtocol/governance-proposals/blob/main/proposals/AZT-008.md",
   description:

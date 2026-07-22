@@ -4,6 +4,8 @@ import { applyEnrichment, buildProposalDetailView } from "@/lib/proposal-view";
 import { buildKey } from "@/lib/query-keys";
 import { cachedFetch } from "@/lib/cache";
 import { fetchProposalEnrichment } from "@/lib/proposal-enrich";
+import { fetchProposalActions } from "@/lib/proposal-actions";
+import { publicClient } from "@/lib/contracts";
 import { ProposalDetailClient } from "./ProposalDetailClient";
 
 interface PageProps {
@@ -26,12 +28,12 @@ export default async function ProposalDetailPage({ params }: PageProps) {
 
   const initialData = buildProposalDetailView(proposal, totalPower, numericId);
 
-  const enrichment = await fetchProposalEnrichment(
-    initialData.githubInfo,
-    initialData.uri,
-    numericId
-  );
+  const [enrichment, actions] = await Promise.all([
+    fetchProposalEnrichment(initialData.githubInfo, initialData.uri, numericId),
+    fetchProposalActions(publicClient, initialData.payloadAddress),
+  ]);
   if (enrichment) applyEnrichment(initialData, enrichment);
+  if (actions.length > 0) initialData.actions = actions;
 
   return <ProposalDetailClient id={numericId} initialData={initialData} />;
 }

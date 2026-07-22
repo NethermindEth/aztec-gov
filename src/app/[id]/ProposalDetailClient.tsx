@@ -8,12 +8,12 @@ import type { ProposalDetailView } from "@/lib/types";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { EtherscanLink } from "@/components/ui/EtherscanLink";
 import { ProposalLifecycle } from "@/components/governance/ProposalLifecycle";
 import { VoteBreakdown } from "@/components/governance/VoteBreakdown";
 import { AlertBanner } from "@/components/governance/AlertBanner";
 import { ActionPanel } from "@/components/governance/ActionPanel";
 import { ProposalDetails } from "@/components/governance/ProposalDetails";
+import { ProposalActions } from "@/components/governance/ProposalActions";
 import { GitHubReference } from "@/components/governance/GitHubReference";
 import { ForumReference } from "@/components/governance/ForumReference";
 import { VoteModal } from "@/components/governance/VoteModal";
@@ -146,10 +146,14 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
           </h1>
           <div className="flex flex-wrap items-center gap-2 md:gap-4">
             <StatusBadge status={p.status} />
-            <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-              Proposed by{" "}
-              <EtherscanLink address={p.proposer} />
-            </span>
+            {p.azupMeta?.author && (
+              <span className="text-sm" style={{ color: "var(--text-muted)" }}>
+                Proposed by{" "}
+                <span style={{ color: "var(--text-secondary)" }}>
+                  {p.azupMeta.author}
+                </span>
+              </span>
+            )}
             <span
               className="text-sm"
               style={{
@@ -200,6 +204,11 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
           <div className="flex-1 flex flex-col gap-6">
             <ProposalLifecycle steps={p.lifecycleSteps} />
 
+            {/* Execution actions */}
+            {p.actions && p.actions.length > 0 && (
+              <ProposalActions actions={p.actions} />
+            )}
+
             {/* Description */}
             {p.description && (
               <div
@@ -233,7 +242,7 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
             {/* Proposal Details */}
             <ProposalDetails
               status={p.status}
-              proposer={p.proposer}
+              author={p.azupMeta?.author}
               payloadAddress={p.payloadAddress}
               discussionUrl={discussionUrl}
               createdDate={p.createdDate}

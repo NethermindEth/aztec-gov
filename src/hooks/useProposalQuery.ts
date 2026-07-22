@@ -19,13 +19,17 @@ import type { ProposalDetailView, ProposalsPageData } from "@/lib/types";
 
 export type { ProposalsPageData } from "@/lib/types";
 
-// Client rebuilds carry only on-chain data; enrichment (titles, summaries,
-// discussion links) is server-side, so carry the previous snapshot's forward.
+// Client rebuilds carry only on-chain vote data; server-fetched extras
+// (enrichment, and the immutable payload actions) are copied from the
+// previous snapshot so a refetch doesn't drop them.
 function carryEnrichment(
   prev: ProposalDetailView | ProposalsPageData["proposals"][number],
   next: ProposalDetailView | ProposalsPageData["proposals"][number]
 ): void {
   if (prev.enrichment && !next.enrichment) applyEnrichment(next, prev.enrichment);
+  if ("actions" in prev && prev.actions && "actions" in next && !next.actions) {
+    next.actions = prev.actions;
+  }
 }
 
 // ─── Listing (paginated) ────────────────────────────────────────────────────
