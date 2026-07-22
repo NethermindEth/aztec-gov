@@ -75,12 +75,14 @@ export function ProposalCardActive({
       </div>
 
       {/* Description */}
-      <p
-        className="text-sm leading-relaxed line-clamp-2"
-        style={{ color: "var(--text-secondary)" }}
-      >
-        {description}
-      </p>
+      {description && (
+        <p
+          className="text-sm leading-relaxed line-clamp-2"
+          style={{ color: "var(--text-secondary)" }}
+        >
+          {description}
+        </p>
+      )}
 
       {/* Vote bar */}
       {hasVotes ? (

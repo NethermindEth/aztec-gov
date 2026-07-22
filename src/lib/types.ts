@@ -39,6 +39,10 @@ export interface ProposalView {
   payloadAddress: string;
   githubInfo?: GitHubInfo;
   azupMeta?: AzupMeta;
+  /** Forum topic URL without protocol, resolved server-side. */
+  forumUrl?: string;
+  /** True once server-side metadata enrichment ran (see proposal-enrich.ts). */
+  enriched?: boolean;
   lifecycleSteps: LifecycleStep[];
 }
 
@@ -69,6 +73,10 @@ export interface ProposalDetailView {
   description: string;
   githubInfo?: GitHubInfo;
   azupMeta?: AzupMeta;
+  /** Forum topic URL without protocol, resolved server-side. */
+  forumUrl?: string;
+  /** True once server-side metadata enrichment ran (see proposal-enrich.ts). */
+  enriched?: boolean;
 
   // Vote data
   yeaPct: number;

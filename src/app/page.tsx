@@ -3,8 +3,7 @@ import { buildProposalsPageData, computeFilteredPageIds } from "@/lib/proposal-v
 import { buildKey } from "@/lib/query-keys";
 import { cachedFetch } from "@/lib/cache";
 import { ITEMS_PER_PAGE } from "@/lib/constants";
-import { fetchGitHubMeta } from "@/lib/github";
-import { fetchAzupMeta } from "@/lib/azup";
+import { enrichProposalView } from "@/lib/proposal-enrich";
 import { GovernanceClient } from "./GovernanceClient";
 
 export default async function GovernancePage({
@@ -31,32 +30,9 @@ export default async function GovernancePage({
 
   const initialData = buildProposalsPageData(index, proposals, index.totalPower, filterForQuery);
 
-  // Enrich proposals with AZUP or GitHub API metadata in parallel
+  // Enrich proposals with AZUP, forum, and GitHub metadata in parallel
   await Promise.all(
-    initialData.proposals.map(async (view, i) => {
-      // Try AZUP parsing first (for proposals with /AZUPs/*.md URLs)
-      const uri = proposals[i]?.uri;
-      if (uri) {
-        const azupMeta = await fetchAzupMeta(uri);
-        if (azupMeta) {
-          view.title = azupMeta.title;
-          view.description = azupMeta.description ?? azupMeta.abstract ?? view.description;
-          view.azupMeta = azupMeta;
-          return;
-        }
-      }
-
-      // Fall back to GitHub API enrichment
-      if (!view.githubInfo) return;
-      const meta = await fetchGitHubMeta(view.githubInfo);
-      if (!meta) return;
-      if (meta.title) {
-        view.githubInfo.apiTitle = meta.title;
-        view.title = meta.title;
-      }
-      if (meta.state) view.githubInfo.apiState = meta.state;
-      if (meta.description) view.githubInfo.apiDescription = meta.description;
-    })
+    initialData.proposals.map((view, i) => enrichProposalView(view, proposals[i]?.uri))
   );
 
   return <GovernanceClient initialData={initialData} initialPage={page} initialFilter={filter} />;

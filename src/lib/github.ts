@@ -1,5 +1,22 @@
 // ─── GitHub URL Parser & API Fetcher ─────────────────────────────────────────
 
+import { AZUP_PATH_PATTERN } from "./azup";
+
+// Authenticated requests get 5000 req/hr vs 60 unauthenticated, so titles
+// don't degrade under load; set GITHUB_TOKEN in the deploy environment.
+function githubHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github.v3+json",
+  };
+  const token = process.env.GITHUB_TOKEN;
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+// GitHub API calls sit on the SSR critical path; bound them so a slow API
+// can't stall the whole page render.
+const GITHUB_TIMEOUT_MS = 5000;
+
 export interface GitHubLinkInfo {
   owner: string;
   repo: string;
@@ -72,8 +89,9 @@ export async function fetchGitHubMeta(
       const res = await fetch(
         `https://api.github.com/repos/${info.owner}/${info.repo}/pulls/${info.number}`,
         {
-          headers: { Accept: "application/vnd.github.v3+json" },
+          headers: githubHeaders(),
           next: { revalidate: 3600 },
+          signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
         }
       );
       if (!res.ok) return null;
@@ -81,6 +99,7 @@ export async function fetchGitHubMeta(
       return {
         title: data.title,
         state: data.merged ? "merged" : data.state,
+        description: data.body ?? undefined,
       };
     }
 
@@ -88,8 +107,9 @@ export async function fetchGitHubMeta(
       const res = await fetch(
         `https://api.github.com/repos/${info.owner}/${info.repo}/issues/${info.number}`,
         {
-          headers: { Accept: "application/vnd.github.v3+json" },
+          headers: githubHeaders(),
           next: { revalidate: 3600 },
+          signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
         }
       );
       if (!res.ok) return null;
@@ -101,8 +121,9 @@ export async function fetchGitHubMeta(
       const res = await fetch(
         `https://api.github.com/repos/${info.owner}/${info.repo}`,
         {
-          headers: { Accept: "application/vnd.github.v3+json" },
+          headers: githubHeaders(),
           next: { revalidate: 3600 },
+          signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
         }
       );
       if (!res.ok) return null;
@@ -111,6 +132,31 @@ export async function fetchGitHubMeta(
     }
 
     return null;
+  } catch {
+    return null;
+  }
+}
+
+// Raw URL of the AZUP document in a payload PR, but only when the PR touches
+// exactly one; multiple AZUPs are ambiguous, so we return null rather than
+// guess and enrich the proposal with the wrong document.
+export async function fetchPrAzupRawUrl(
+  info: GitHubLinkInfo
+): Promise<string | null> {
+  if (info.type !== "pull" || !info.number) return null;
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${info.owner}/${info.repo}/pulls/${info.number}/files?per_page=100`,
+      {
+        headers: githubHeaders(),
+        next: { revalidate: 3600 },
+        signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
+      }
+    );
+    if (!res.ok) return null;
+    const files: { filename?: string; raw_url?: string }[] = await res.json();
+    const azupFiles = files.filter((f) => AZUP_PATH_PATTERN.test(f.filename ?? ""));
+    return azupFiles.length === 1 ? azupFiles[0].raw_url ?? null : null;
   } catch {
     return null;
   }

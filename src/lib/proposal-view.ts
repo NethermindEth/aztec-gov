@@ -19,12 +19,24 @@ import {
 } from "./format";
 import type { ProposalDetailView, LifecycleStep, ProposalView, ProposalsPageData, GitHubInfo } from "./types";
 import { parseGitHubUrl, formatGitHubTitle } from "./github";
+import { getForumUrl } from "./forum";
 
-// ─── Title Overrides ─────────────────────────────────────────────────────────
+interface BaseMeta {
+  githubInfo?: GitHubInfo;
+  title: string;
+  forumUrl?: string;
+}
 
-const TITLE_OVERRIDES: Record<number, string> = {
-  2: "Aztec Alpha Network",
-};
+// Network-free metadata shared by both builders. enrichProposalView upgrades
+// title/description/forumUrl server-side; these are the offline fallbacks.
+function buildBaseMeta(proposal: Proposal): BaseMeta {
+  const parsed = proposal.uri ? parseGitHubUrl(proposal.uri) : null;
+  const githubInfo: GitHubInfo | undefined = parsed
+    ? { owner: parsed.owner, repo: parsed.repo, type: parsed.type, number: parsed.number, url: parsed.url }
+    : undefined;
+  const title = parsed ? formatGitHubTitle(parsed) : `Proposal #${proposal.id}`;
+  return { githubInfo, title, forumUrl: getForumUrl(Number(proposal.id)) };
+}
 
 // ─── Lifecycle Steps ──────────────────────────────────────────────────────────
 
@@ -209,14 +221,7 @@ export function buildProposalDetailView(
     proposal.config
   );
 
-  const parsed = proposal.uri ? parseGitHubUrl(proposal.uri) : null;
-  const githubInfo: GitHubInfo | undefined = parsed
-    ? { owner: parsed.owner, repo: parsed.repo, type: parsed.type, number: parsed.number, url: parsed.url }
-    : undefined;
-  const rawTitle = parsed
-    ? formatGitHubTitle(parsed)
-    : proposal.uri || `Proposal #${proposal.id}`;
-  const title = TITLE_OVERRIDES[numericId] ?? rawTitle;
+  const { githubInfo, title, forumUrl } = buildBaseMeta(proposal);
 
   return {
     numericId,
@@ -226,8 +231,9 @@ export function buildProposalDetailView(
     proposer: proposal.proposerAddress,
     payloadAddress: proposal.payloadAddress,
     uri: proposal.uri,
-    description: title,
+    description: "",
     githubInfo,
+    forumUrl,
     yeaPct,
     nayPct,
     yeaVotes: formatVotesWithUnit(proposal.ballot.yea),
@@ -279,14 +285,7 @@ export function buildProposalView(
   }
 
   const timeRemaining = computeTimeRemaining(proposal);
-  const parsed = proposal.uri ? parseGitHubUrl(proposal.uri) : null;
-  const githubInfo: GitHubInfo | undefined = parsed
-    ? { owner: parsed.owner, repo: parsed.repo, type: parsed.type, number: parsed.number, url: parsed.url }
-    : undefined;
-  const rawTitle = parsed
-    ? formatGitHubTitle(parsed)
-    : proposal.uri || `Proposal #${proposal.id}`;
-  const title = TITLE_OVERRIDES[Number(proposal.id)] ?? rawTitle;
+  const { githubInfo, title, forumUrl } = buildBaseMeta(proposal);
 
   const lifecycleSteps = computeLifecycleSteps(
     proposal.state,
@@ -298,9 +297,10 @@ export function buildProposalView(
     numericId: Number(proposal.id),
     id: `AZT-${String(proposal.id).padStart(2, "0")}`,
     title,
-    description: `Payload: ${proposal.payloadAddress}`,
+    description: "",
     payloadAddress: proposal.payloadAddress,
     githubInfo,
+    forumUrl,
     status,
     voteFor: yeaPct,
     voteAgainst: nayPct,

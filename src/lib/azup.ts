@@ -10,6 +10,9 @@ export interface AzupUrlInfo {
   rawUrl: string;
 }
 
+// A repo-relative AZUP document path, e.g. "AZUPs/azup-1.md" (nested allowed).
+export const AZUP_PATH_PATTERN = /(?:^|\/)AZUPs\/[^?#]+\.md$/;
+
 // Match GitHub blob URLs: github.com/{owner}/{repo}/blob/{branch}/AZUPs/{file}.md
 const BLOB_PATTERN =
   /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(AZUPs\/[^?#]+\.md)/;
@@ -53,7 +56,9 @@ export function parseAzupUrl(uri: string): AzupUrlInfo | null {
 /**
  * Fetch raw markdown content from raw.githubusercontent.com.
  */
-export async function fetchAzupContent(info: AzupUrlInfo): Promise<string | null> {
+export async function fetchAzupContent(
+  info: Pick<AzupUrlInfo, "rawUrl">
+): Promise<string | null> {
   try {
     const res = await fetch(info.rawUrl, {
       next: { revalidate: 3600 },
@@ -106,9 +111,10 @@ export function parseAzupPreamble(markdown: string, sourceUrl: string): AzupMeta
     if (!isNaN(parsed)) azupNumber = parsed;
   }
 
-  // Override title from table if present
+  // Override title from table if present, dropping any redundant "AZUP-N:"
+  // prefix so it isn't shown twice alongside the proposal id.
   const titleField = fields.get("title");
-  if (titleField) title = titleField;
+  if (titleField) title = titleField.replace(/^AZUP-\d+:\s*/, "");
 
   // Extract abstract section
   let abstract: string | undefined;
@@ -141,24 +147,23 @@ export function parseAzupPreamble(markdown: string, sourceUrl: string): AzupMeta
 // In-memory cache for parsed AZUP metadata
 const azupCache = new Map<string, AzupMeta | null>();
 
-/**
- * Fetch and parse AZUP metadata from a GitHub URL.
- * Returns null for non-AZUP URIs (existing proposals fall through).
- */
+// Fetch+parse AZUP metadata from a GitHub URL; null for non-AZUP URIs.
 export async function fetchAzupMeta(uri: string): Promise<AzupMeta | null> {
   const info = parseAzupUrl(uri);
-  if (!info) return null;
+  return info ? fetchAzupMetaFromRawUrl(info.rawUrl, uri) : null;
+}
 
-  const cached = azupCache.get(info.rawUrl);
+// Same fetch+parse for a raw file URL discovered inside a payload PR, where
+// the on-chain URI itself is not an AZUP link.
+export async function fetchAzupMetaFromRawUrl(
+  rawUrl: string,
+  sourceUrl: string
+): Promise<AzupMeta | null> {
+  const cached = azupCache.get(rawUrl);
   if (cached !== undefined) return cached;
 
-  const content = await fetchAzupContent(info);
-  if (!content) {
-    azupCache.set(info.rawUrl, null);
-    return null;
-  }
-
-  const meta = parseAzupPreamble(content, uri);
-  azupCache.set(info.rawUrl, meta);
+  const content = await fetchAzupContent({ rawUrl });
+  const meta = content ? parseAzupPreamble(content, sourceUrl) : null;
+  azupCache.set(rawUrl, meta);
   return meta;
 }
