@@ -116,13 +116,14 @@ export function ProposalExpandedContent({ proposal, onVote, onDeposit }: Proposa
               <EtherscanLink address={proposal.payloadAddress} inline />
             </span>
 
-            <span
-              className="text-xs"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Proposer:{" "}
-              <EtherscanLink address={proposal.proposer} inline />
-            </span>
+            {proposal.azupMeta?.author && (
+              <span
+                className="text-xs"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Author: {proposal.azupMeta.author}
+              </span>
+            )}
           </div>
         </div>
 

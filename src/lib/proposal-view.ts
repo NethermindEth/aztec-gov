@@ -246,7 +246,6 @@ export function buildProposalDetailView(
     displayId: `AZT-${String(proposal.id).padStart(2, "0")}`,
     title,
     status,
-    proposer: proposal.proposerAddress,
     payloadAddress: proposal.payloadAddress,
     uri: proposal.uri,
     description: "",
@@ -323,7 +322,6 @@ export function buildProposalView(
     voteFor: yeaPct,
     voteAgainst: nayPct,
     quorumPct,
-    proposer: proposal.proposerAddress,
     timeRemaining,
     summaryText: getSummaryText(
       proposal.state,
