@@ -10,6 +10,7 @@ import { buildKey } from "@/lib/query-keys";
 import { ProposalNotFoundError } from "@/lib/errors";
 import { REFETCH_INTERVAL, SLOW_REFETCH_INTERVAL, ITEMS_PER_PAGE } from "@/lib/constants";
 import {
+  applyEnrichment,
   buildProposalDetailView,
   buildProposalsPageData,
   computeFilteredPageIds,
@@ -19,22 +20,12 @@ import type { ProposalDetailView, ProposalsPageData } from "@/lib/types";
 export type { ProposalsPageData } from "@/lib/types";
 
 // Client rebuilds carry only on-chain data; enrichment (titles, summaries,
-// forum links) is server-side, so copy it forward from the previous snapshot.
-function carryEnrichment<T extends ProposalDetailView | ProposalsPageData["proposals"][number]>(
-  prev: T,
-  next: T
+// discussion links) is server-side, so carry the previous snapshot's forward.
+function carryEnrichment(
+  prev: ProposalDetailView | ProposalsPageData["proposals"][number],
+  next: ProposalDetailView | ProposalsPageData["proposals"][number]
 ): void {
-  if (!prev.enriched || next.enriched) return;
-  next.enriched = true;
-  next.title = prev.title;
-  next.description = prev.description;
-  if (prev.azupMeta) next.azupMeta = prev.azupMeta;
-  if (prev.forumUrl) next.forumUrl = prev.forumUrl;
-  if (prev.githubInfo && next.githubInfo) {
-    next.githubInfo.apiTitle = prev.githubInfo.apiTitle;
-    next.githubInfo.apiState = prev.githubInfo.apiState;
-    next.githubInfo.apiDescription = prev.githubInfo.apiDescription;
-  }
+  if (prev.enrichment && !next.enrichment) applyEnrichment(next, prev.enrichment);
 }
 
 // ─── Listing (paginated) ────────────────────────────────────────────────────

@@ -1,9 +1,9 @@
 import { fetchProposalIndex, fetchProposalPage } from "@/lib/governance";
-import { buildProposalsPageData, computeFilteredPageIds } from "@/lib/proposal-view";
+import { applyEnrichment, buildProposalsPageData, computeFilteredPageIds } from "@/lib/proposal-view";
 import { buildKey } from "@/lib/query-keys";
 import { cachedFetch } from "@/lib/cache";
 import { ITEMS_PER_PAGE } from "@/lib/constants";
-import { enrichProposalView } from "@/lib/proposal-enrich";
+import { fetchProposalEnrichment } from "@/lib/proposal-enrich";
 import { GovernanceClient } from "./GovernanceClient";
 
 export default async function GovernancePage({
@@ -32,7 +32,14 @@ export default async function GovernancePage({
 
   // Enrich proposals with AZUP, forum, and GitHub metadata in parallel
   await Promise.all(
-    initialData.proposals.map((view, i) => enrichProposalView(view, proposals[i]?.uri))
+    initialData.proposals.map(async (view, i) => {
+      const enrichment = await fetchProposalEnrichment(
+        view.githubInfo,
+        proposals[i]?.uri,
+        view.numericId
+      );
+      if (enrichment) applyEnrichment(view, enrichment);
+    })
   );
 
   return <GovernanceClient initialData={initialData} initialPage={page} initialFilter={filter} />;
