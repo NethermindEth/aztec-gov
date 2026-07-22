@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useCallback, useState, useEffect } from "react";
+import { useMemo, useCallback, useState, useEffect, useRef, startTransition } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useWallet } from "@/hooks/useWallet";
 import { useProposalsQuery } from "@/hooks/useProposalQuery";
+import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { formatVotesWithUnit } from "@/lib/format";
-import { ITEMS_PER_PAGE } from "@/lib/constants";
+import { ITEMS_PER_PAGE, SEARCH_DEBOUNCE_MS } from "@/lib/constants";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { StatsRow } from "@/components/governance/StatsRow";
@@ -45,7 +46,15 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
 
   const activeTab = searchParams.get("filter") ?? "All";
   const currentPage = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
-  const searchQuery = searchParams.get("q") ?? "";
+  const urlQuery = searchParams.get("q") ?? "";
+
+  // Local input drives typing and filtering so keystrokes never wait on a
+  // router navigation; the URL is mirrored on a debounce for share/reload.
+  const [searchQuery, setSearchQuery] = useState(urlQuery);
+  const lastWrittenQuery = useRef(urlQuery);
+  // Latest search read from a ref so updateParams stays stable while typing.
+  const searchQueryRef = useRef(searchQuery);
+  searchQueryRef.current = searchQuery;
 
   const updateParams = useCallback(
     (updates: { page?: number; filter?: string; q?: string }) => {
@@ -65,7 +74,8 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
         params.set("filter", filter);
       }
 
-      const q = updates.q ?? searchQuery;
+      // A tab/page change with no explicit q commits the current search text.
+      const q = updates.q ?? searchQueryRef.current;
       if (!q) {
         params.delete("q");
       } else {
@@ -75,7 +85,7 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
       const query = params.toString();
       router.replace(query ? `?${query}` : "/", { scroll: false });
     },
-    [searchParams, router, currentPage, activeTab, searchQuery]
+    [searchParams, router, currentPage, activeTab]
   );
 
   const setCurrentPage = useCallback(
@@ -88,10 +98,40 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
     [updateParams]
   );
 
-  const setSearchQuery = useCallback(
-    (q: string) => updateParams({ q, page: 1 }),
-    [updateParams]
+  const [writeSearchQuery, cancelSearchQueryWrite] = useDebouncedCallback(
+    (q: string) => {
+      lastWrittenQuery.current = q;
+      // Non-urgent: let the input/filter stay responsive while the RSC segment re-renders.
+      startTransition(() => updateParams({ q, page: 1 }));
+    },
+    SEARCH_DEBOUNCE_MS
   );
+
+  const handleSearchChange = useCallback(
+    (q: string) => {
+      setSearchQuery(q);
+      // From a deeper page, jump to page 1 at once so the filter runs over
+      // page-1 data; otherwise mirror to the URL on a debounce.
+      if (currentPage > 1) {
+        cancelSearchQueryWrite();
+        lastWrittenQuery.current = q;
+        startTransition(() => updateParams({ q, page: 1 }));
+      } else {
+        writeSearchQuery(q);
+      }
+    },
+    [currentPage, updateParams, writeSearchQuery, cancelSearchQueryWrite]
+  );
+
+  useEffect(() => {
+    // Adopt the URL only on external changes (back/forward, shared link), and
+    // cancel any pending self-write so a stale keystroke can't clobber it.
+    if (urlQuery !== lastWrittenQuery.current) {
+      cancelSearchQueryWrite();
+      lastWrittenQuery.current = urlQuery;
+      setSearchQuery(urlQuery);
+    }
+  }, [urlQuery, cancelSearchQueryWrite]);
 
   const { data, isPlaceholderData, isError, refetch } = useProposalsQuery(
     { filter: activeTab === "All" ? undefined : activeTab, page: currentPage },
@@ -133,6 +173,8 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
     const active = displayProposals.find((p) => p.isActive);
     return active?.id ?? null;
   }, [displayProposals]);
+  const defaultExpandedIdRef = useRef(defaultExpandedId);
+  defaultExpandedIdRef.current = defaultExpandedId;
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
@@ -149,10 +191,11 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
     setExpandedId((prev) => (prev === id ? null : id));
   }, []);
 
-  // Default to first active proposal; reset on tab, page, or search changes
+  // Default-expand the first active proposal on tab/page change only, so typing
+  // in search doesn't re-expand a row the user just collapsed.
   useEffect(() => {
-    setExpandedId(defaultExpandedId);
-  }, [activeTab, currentPage, searchQuery, defaultExpandedId]);
+    setExpandedId(defaultExpandedIdRef.current);
+  }, [activeTab, currentPage]);
 
   return (
     <div
@@ -205,7 +248,7 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
           <div className="w-full md:w-72 pb-px">
             <SearchInput
               value={searchQuery}
-              onChange={setSearchQuery}
+              onChange={handleSearchChange}
               placeholder="Search proposals..."
             />
           </div>
