@@ -14,6 +14,7 @@ import { AlertBanner } from "@/components/governance/AlertBanner";
 import { ActionPanel } from "@/components/governance/ActionPanel";
 import { ProposalDetails } from "@/components/governance/ProposalDetails";
 import { ProposalActions } from "@/components/governance/ProposalActions";
+import { YourVotePanel } from "@/components/governance/YourVotePanel";
 import { GitHubReference } from "@/components/governance/GitHubReference";
 import { ForumReference } from "@/components/governance/ForumReference";
 import { VoteModal } from "@/components/governance/VoteModal";
@@ -198,6 +199,7 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
               onVote={handleVote}
               onDeposit={() => setDepositModalOpen(true)}
             />
+            <YourVotePanel proposalId={id} />
           </div>
 
           {/* Right panel */}

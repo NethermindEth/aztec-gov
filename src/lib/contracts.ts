@@ -169,6 +169,26 @@ export const GovernanceAbi = [
     outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
   },
+  // A voter's ballot on a proposal; yea/nay are the power they spent each way.
+  {
+    type: "function",
+    name: "getBallot",
+    inputs: [
+      { name: "_proposalId", type: "uint256" },
+      { name: "_voter", type: "address" },
+    ],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "yea", type: "uint256" },
+          { name: "nay", type: "uint256" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
   {
     type: "function",
     name: "getProposalState",
