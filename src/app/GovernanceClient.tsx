@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useCallback, useState, useEffect } from "react";
+import { useMemo, useCallback, useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useWallet } from "@/hooks/useWallet";
 import { useProposalsQuery } from "@/hooks/useProposalQuery";
+import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { formatVotesWithUnit } from "@/lib/format";
 import { ITEMS_PER_PAGE } from "@/lib/constants";
 import { Navbar } from "@/components/layout/Navbar";
@@ -45,7 +46,20 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
 
   const activeTab = searchParams.get("filter") ?? "All";
   const currentPage = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
-  const searchQuery = searchParams.get("q") ?? "";
+  const urlQuery = searchParams.get("q") ?? "";
+
+  // Local input drives typing and filtering so keystrokes never wait on a
+  // router navigation; the URL is mirrored on a debounce for share/reload.
+  const [searchQuery, setSearchQuery] = useState(urlQuery);
+  const lastWrittenQuery = useRef(urlQuery);
+  useEffect(() => {
+    // Adopt the URL value only on external changes (back/forward, shared link),
+    // not the debounced writes we made ourselves, which would revert keystrokes.
+    if (urlQuery !== lastWrittenQuery.current) {
+      lastWrittenQuery.current = urlQuery;
+      setSearchQuery(urlQuery);
+    }
+  }, [urlQuery]);
 
   const updateParams = useCallback(
     (updates: { page?: number; filter?: string; q?: string }) => {
@@ -88,9 +102,17 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
     [updateParams]
   );
 
-  const setSearchQuery = useCallback(
-    (q: string) => updateParams({ q, page: 1 }),
-    [updateParams]
+  const writeSearchQuery = useDebouncedCallback((q: string) => {
+    lastWrittenQuery.current = q;
+    updateParams({ q, page: 1 });
+  }, 300);
+
+  const handleSearchChange = useCallback(
+    (q: string) => {
+      setSearchQuery(q);
+      writeSearchQuery(q);
+    },
+    [writeSearchQuery]
   );
 
   const { data, isPlaceholderData, isError, refetch } = useProposalsQuery(
@@ -205,7 +227,7 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
           <div className="w-full md:w-72 pb-px">
             <SearchInput
               value={searchQuery}
-              onChange={setSearchQuery}
+              onChange={handleSearchChange}
               placeholder="Search proposals..."
             />
           </div>
