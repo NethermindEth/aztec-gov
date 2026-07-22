@@ -10,30 +10,32 @@ const KNOWN_CONTRACTS: Record<string, string> = {
   [stakingAssetAddress.toLowerCase()]: "Staking Asset",
 };
 
-// selector -> "name(argTypes)" cache, shared across requests in the process.
+// selector -> signature cache (null = definitively unknown), shared per process.
 const signatureCache = new Map<string, string | null>();
 
+const SIGNATURE_TIMEOUT_MS = 2500;
+
 // Resolves a 4-byte selector to a function signature via the OpenChain
-// database. Server-side, cached, and fails soft to the raw selector.
+// database. Server-side; only caches definitive results so a transient
+// outage doesn't pin a raw selector, and never guesses on a 4-byte collision.
 async function resolveSignature(selector: string): Promise<string | undefined> {
+  if (selector === "0x") return undefined;
   const cached = signatureCache.get(selector);
   if (cached !== undefined) return cached ?? undefined;
   try {
     const res = await fetch(
       `https://api.openchain.xyz/signature-database/v1/lookup?function=${selector}&filter=true`,
-      { next: { revalidate: 86_400 }, signal: AbortSignal.timeout(5000) }
+      { next: { revalidate: 86_400 }, signal: AbortSignal.timeout(SIGNATURE_TIMEOUT_MS) }
     );
-    if (!res.ok) {
-      signatureCache.set(selector, null);
-      return undefined;
-    }
+    if (!res.ok) return undefined; // transient; don't cache, retry next render
     const data = await res.json();
-    const match = data?.result?.function?.[selector]?.[0]?.name as string | undefined;
-    signatureCache.set(selector, match ?? null);
-    return match;
+    const matches = data?.result?.function?.[selector] as { name: string }[] | undefined;
+    // Trust only an unambiguous match; multiple means a collision we can't resolve.
+    const name = matches?.length === 1 ? matches[0].name : undefined;
+    signatureCache.set(selector, name ?? null);
+    return name;
   } catch {
-    signatureCache.set(selector, null);
-    return undefined;
+    return undefined; // timeout/network; don't cache
   }
 }
 

@@ -84,16 +84,21 @@ const PREAMBLE_FIELDS = new Set([
   "created",
 ]);
 
-// AZUPs write the preamble as either a horizontal table (field names in a
-// header row, values in the row below) or a vertical | key | value | one.
-// Returns lowercased field -> value, skipping template placeholders.
+// Parses the AZUP preamble table, whether horizontal (field names in a header
+// row, values below) or vertical (| key | value |), to lowercased field->value.
 function parsePreambleTable(markdown: string): Map<string, string> {
   const fields = new Map<string, string>();
   const rows = markdown
     .split("\n")
     .filter((l) => /^\s*\|/.test(l))
     .map((l) =>
-      l.trim().replace(/^\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim().replace(/^`|`$/g, ""))
+      l
+        .trim()
+        .replace(/^\|/, "")
+        .replace(/\|\s*$/, "")
+        // Split on unescaped pipes; a value may contain an escaped "\|".
+        .split(/(?<!\\)\|/)
+        .map((c) => c.trim().replace(/\\\|/g, "|").replace(/^`|`$/g, ""))
     );
   const dataRows = rows.filter((r) => !r.every((c) => /^:?-+:?$/.test(c)));
   if (dataRows.length === 0) return fields;

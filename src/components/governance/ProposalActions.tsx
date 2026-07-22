@@ -5,10 +5,11 @@ interface ProposalActionsProps {
   actions: ProposalAction[];
 }
 
-// A signature is "name(uint256,address)"; show just the name, which is what
-// reads. Falls back to the raw selector when the lookup found nothing.
+// A signature is "name(uint256,address)"; show just the name. Falls back to
+// the raw selector, or a note when the action carries no calldata.
 function callLabel(action: ProposalAction): string {
   if (action.signature) return `${action.signature.split("(")[0]}()`;
+  if (action.selector === "0x") return "(no calldata)";
   return action.selector;
 }
 
