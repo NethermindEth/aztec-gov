@@ -30,5 +30,8 @@ export const SLOW_REFETCH_INTERVAL = 60_000;
 /** Number of proposals per page */
 export const ITEMS_PER_PAGE = 10;
 
+/** Debounce (ms) before a search keystroke is mirrored to the URL */
+export const SEARCH_DEBOUNCE_MS = 300;
+
 /** Timeout for waitForTransactionReceipt calls (ms) */
 export const TX_RECEIPT_TIMEOUT = 300_000;

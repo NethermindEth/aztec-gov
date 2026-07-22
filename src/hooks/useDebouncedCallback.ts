@@ -2,31 +2,34 @@
 
 import { useCallback, useEffect, useRef } from "react";
 
-// Returns a stable function that runs `callback` only after `delay` ms have
-// passed without another call. Always invokes the latest callback and clears
-// any pending timer on unmount.
+// Returns a stable [run, cancel] pair. `run` invokes the latest `callback`
+// only after `delay` ms pass without another call; `cancel` drops a pending
+// call (used when an external change should win). Cleans up on unmount.
 export function useDebouncedCallback<Args extends unknown[]>(
   callback: (...args: Args) => void,
   delay: number
-): (...args: Args) => void {
+): [run: (...args: Args) => void, cancel: () => void] {
   const callbackRef = useRef(callback);
   useEffect(() => {
     callbackRef.current = callback;
   }, [callback]);
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    },
-    []
-  );
+  const cancel = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+  useEffect(() => cancel, [cancel]);
 
-  return useCallback(
+  const run = useCallback(
     (...args: Args) => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      cancel();
       timeoutRef.current = setTimeout(() => callbackRef.current(...args), delay);
     },
-    [delay]
+    [delay, cancel]
   );
+
+  return [run, cancel];
 }

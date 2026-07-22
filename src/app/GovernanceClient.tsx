@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useCallback, useState, useEffect, useRef } from "react";
+import { useMemo, useCallback, useState, useEffect, useRef, startTransition } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useWallet } from "@/hooks/useWallet";
 import { useProposalsQuery } from "@/hooks/useProposalQuery";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { formatVotesWithUnit } from "@/lib/format";
-import { ITEMS_PER_PAGE } from "@/lib/constants";
+import { ITEMS_PER_PAGE, SEARCH_DEBOUNCE_MS } from "@/lib/constants";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { StatsRow } from "@/components/governance/StatsRow";
@@ -52,14 +52,6 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
   // router navigation; the URL is mirrored on a debounce for share/reload.
   const [searchQuery, setSearchQuery] = useState(urlQuery);
   const lastWrittenQuery = useRef(urlQuery);
-  useEffect(() => {
-    // Adopt the URL value only on external changes (back/forward, shared link),
-    // not the debounced writes we made ourselves, which would revert keystrokes.
-    if (urlQuery !== lastWrittenQuery.current) {
-      lastWrittenQuery.current = urlQuery;
-      setSearchQuery(urlQuery);
-    }
-  }, [urlQuery]);
 
   const updateParams = useCallback(
     (updates: { page?: number; filter?: string; q?: string }) => {
@@ -102,10 +94,14 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
     [updateParams]
   );
 
-  const writeSearchQuery = useDebouncedCallback((q: string) => {
-    lastWrittenQuery.current = q;
-    updateParams({ q, page: 1 });
-  }, 300);
+  const [writeSearchQuery, cancelSearchQueryWrite] = useDebouncedCallback(
+    (q: string) => {
+      lastWrittenQuery.current = q;
+      // Non-urgent: let the input/filter stay responsive while the RSC segment re-renders.
+      startTransition(() => updateParams({ q, page: 1 }));
+    },
+    SEARCH_DEBOUNCE_MS
+  );
 
   const handleSearchChange = useCallback(
     (q: string) => {
@@ -114,6 +110,18 @@ export function GovernanceClient({ initialData, initialPage = 1, initialFilter =
     },
     [writeSearchQuery]
   );
+
+  useEffect(() => {
+    // Adopt the URL value only on external changes (back/forward, shared link),
+    // not the debounced writes we made ourselves, which would revert keystrokes.
+    // Cancel any pending self-write first so a stale keystroke can't clobber the
+    // navigation once it fires.
+    if (urlQuery !== lastWrittenQuery.current) {
+      cancelSearchQueryWrite();
+      lastWrittenQuery.current = urlQuery;
+      setSearchQuery(urlQuery);
+    }
+  }, [urlQuery, cancelSearchQueryWrite]);
 
   const { data, isPlaceholderData, isError, refetch } = useProposalsQuery(
     { filter: activeTab === "All" ? undefined : activeTab, page: currentPage },
