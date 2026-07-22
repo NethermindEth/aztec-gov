@@ -1,4 +1,5 @@
 import { TruncatedLink } from "@/components/ui/TruncatedLink";
+import { isForumUrl } from "@/lib/forum";
 
 interface ForumReferenceProps {
   url: string;
@@ -6,6 +7,7 @@ interface ForumReferenceProps {
 
 export function ForumReference({ url }: ForumReferenceProps) {
   const href = `https://${url}`;
+  const isForum = isForumUrl(url);
 
   return (
     <div
@@ -18,7 +20,7 @@ export function ForumReference({ url }: ForumReferenceProps) {
           className="text-sm font-medium"
           style={{ color: "var(--text-primary)" }}
         >
-          Forum Discussion
+          {isForum ? "Forum Discussion" : "Discussion"}
         </span>
       </div>
 

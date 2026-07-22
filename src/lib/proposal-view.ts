@@ -17,25 +17,43 @@ import {
   formatDate,
   getSummaryText,
 } from "./format";
-import type { ProposalDetailView, LifecycleStep, ProposalView, ProposalsPageData, GitHubInfo } from "./types";
+import type { ProposalDetailView, LifecycleStep, ProposalView, ProposalsPageData, GitHubInfo, ProposalEnrichment } from "./types";
 import { parseGitHubUrl, formatGitHubTitle } from "./github";
 import { getForumUrl } from "./forum";
 
 interface BaseMeta {
   githubInfo?: GitHubInfo;
   title: string;
-  forumUrl?: string;
+  discussionUrl?: string;
 }
 
-// Network-free metadata shared by both builders. enrichProposalView upgrades
-// title/description/forumUrl server-side; these are the offline fallbacks.
+// Network-free metadata shared by both builders. fetchProposalEnrichment
+// upgrades title/description/discussionUrl server-side; these are the
+// offline fallbacks.
 function buildBaseMeta(proposal: Proposal): BaseMeta {
   const parsed = proposal.uri ? parseGitHubUrl(proposal.uri) : null;
   const githubInfo: GitHubInfo | undefined = parsed
     ? { owner: parsed.owner, repo: parsed.repo, type: parsed.type, number: parsed.number, url: parsed.url }
     : undefined;
   const title = parsed ? formatGitHubTitle(parsed) : `Proposal #${proposal.id}`;
-  return { githubInfo, title, forumUrl: getForumUrl(Number(proposal.id)) };
+  return { githubInfo, title, discussionUrl: getForumUrl(Number(proposal.id)) };
+}
+
+// Projects server-fetched enrichment onto a view (mutates in place). The one
+// place that knows the enrichment-to-view field mapping; the client hook
+// reuses it to carry enrichment across refetches.
+export function applyEnrichment(
+  view: ProposalView | ProposalDetailView,
+  enrichment: ProposalEnrichment
+): void {
+  if (enrichment.title) view.title = enrichment.title;
+  if (enrichment.description) view.description = enrichment.description;
+  if (enrichment.discussionUrl) view.discussionUrl = enrichment.discussionUrl;
+  if (enrichment.azupMeta) view.azupMeta = enrichment.azupMeta;
+  if (enrichment.githubApi && view.githubInfo) {
+    Object.assign(view.githubInfo, enrichment.githubApi);
+  }
+  view.enrichment = enrichment;
 }
 
 // ─── Lifecycle Steps ──────────────────────────────────────────────────────────
@@ -221,7 +239,7 @@ export function buildProposalDetailView(
     proposal.config
   );
 
-  const { githubInfo, title, forumUrl } = buildBaseMeta(proposal);
+  const { githubInfo, title, discussionUrl } = buildBaseMeta(proposal);
 
   return {
     numericId,
@@ -233,7 +251,7 @@ export function buildProposalDetailView(
     uri: proposal.uri,
     description: "",
     githubInfo,
-    forumUrl,
+    discussionUrl,
     yeaPct,
     nayPct,
     yeaVotes: formatVotesWithUnit(proposal.ballot.yea),
@@ -285,7 +303,7 @@ export function buildProposalView(
   }
 
   const timeRemaining = computeTimeRemaining(proposal);
-  const { githubInfo, title, forumUrl } = buildBaseMeta(proposal);
+  const { githubInfo, title, discussionUrl } = buildBaseMeta(proposal);
 
   const lifecycleSteps = computeLifecycleSteps(
     proposal.state,
@@ -300,7 +318,7 @@ export function buildProposalView(
     description: "",
     payloadAddress: proposal.payloadAddress,
     githubInfo,
-    forumUrl,
+    discussionUrl,
     status,
     voteFor: yeaPct,
     voteAgainst: nayPct,

@@ -13,15 +13,26 @@ export function getForumUrl(proposalId: number): string | undefined {
   return FORUM_URLS[proposalId];
 }
 
-// AZUP discussions-to fields carry placeholders like "None"; only a real
-// forum URL survives, normalized to the protocol-less form FORUM_URLS uses.
-// The host must match on a boundary so "forum.aztec.network.evil.com" fails.
-export function normalizeForumUrl(value: string | undefined): string | undefined {
+// AZUP discussions-to may be a forum thread, another site (e.g. GitHub
+// Discussions), or a placeholder like "None". Accept any real http(s) URL as
+// a discussion link, normalized to the protocol-less form; reject the rest.
+export function normalizeDiscussionUrl(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  const stripped = value.trim().replace(/^https?:\/\//, "");
-  return stripped === FORUM_HOST || stripped.startsWith(`${FORUM_HOST}/`)
-    ? stripped
-    : undefined;
+  const trimmed = value.trim();
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
+    return `${url.host}${url.pathname}${url.search}`.replace(/\/$/, "");
+  } catch {
+    return undefined;
+  }
+}
+
+// True only for the real forum host (boundary-matched so a lookalike like
+// "forum.aztec.network.evil.com" fails); gates the Discourse API call.
+export function isForumUrl(protocollessUrl: string | undefined): boolean {
+  if (!protocollessUrl) return false;
+  return protocollessUrl === FORUM_HOST || protocollessUrl.startsWith(`${FORUM_HOST}/`);
 }
 
 export interface ForumTopicMeta {

@@ -23,6 +23,17 @@ export interface GitHubInfo {
   apiDescription?: string;
 }
 
+// Server-fetched overrides projected onto a proposal view by applyEnrichment.
+// Only fields that resolved are present; a null enrichment means nothing found.
+export interface ProposalEnrichment {
+  title?: string;
+  description?: string;
+  /** Discussion URL without protocol (forum or any external host). */
+  discussionUrl?: string;
+  azupMeta?: AzupMeta;
+  githubApi?: Pick<GitHubInfo, "apiTitle" | "apiState" | "apiDescription">;
+}
+
 export interface ProposalView {
   numericId: number;
   id: string;
@@ -39,10 +50,10 @@ export interface ProposalView {
   payloadAddress: string;
   githubInfo?: GitHubInfo;
   azupMeta?: AzupMeta;
-  /** Forum topic URL without protocol, resolved server-side. */
-  forumUrl?: string;
-  /** True once server-side metadata enrichment ran (see proposal-enrich.ts). */
-  enriched?: boolean;
+  /** Discussion URL without protocol (forum or external), resolved server-side. */
+  discussionUrl?: string;
+  /** Server-fetched metadata overrides; presence signals enrichment ran with real data. */
+  enrichment?: ProposalEnrichment;
   lifecycleSteps: LifecycleStep[];
 }
 
@@ -73,10 +84,10 @@ export interface ProposalDetailView {
   description: string;
   githubInfo?: GitHubInfo;
   azupMeta?: AzupMeta;
-  /** Forum topic URL without protocol, resolved server-side. */
-  forumUrl?: string;
-  /** True once server-side metadata enrichment ran (see proposal-enrich.ts). */
-  enriched?: boolean;
+  /** Discussion URL without protocol (forum or external), resolved server-side. */
+  discussionUrl?: string;
+  /** Server-fetched metadata overrides; presence signals enrichment ran with real data. */
+  enrichment?: ProposalEnrichment;
 
   // Vote data
   yeaPct: number;

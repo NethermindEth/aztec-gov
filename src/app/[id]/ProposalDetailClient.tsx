@@ -106,7 +106,7 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
     );
   }
 
-  const forumUrl = p.forumUrl;
+  const discussionUrl = p.discussionUrl;
 
   return (
     <div
@@ -228,14 +228,14 @@ export function ProposalDetailClient({ id, initialData }: ProposalDetailClientPr
             )}
 
             {/* Forum Discussion */}
-            {forumUrl && <ForumReference url={forumUrl} />}
+            {discussionUrl && <ForumReference url={discussionUrl} />}
 
             {/* Proposal Details */}
             <ProposalDetails
               status={p.status}
               proposer={p.proposer}
               payloadAddress={p.payloadAddress}
-              forumUrl={forumUrl}
+              discussionUrl={discussionUrl}
               createdDate={p.createdDate}
               votingEndsDate={p.votingEndsDate}
               executedDate={p.executedDate}

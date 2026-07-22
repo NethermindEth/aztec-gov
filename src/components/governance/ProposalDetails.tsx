@@ -1,5 +1,6 @@
 import type { Status } from "@/components/ui/StatusBadge";
 import { truncateAddress, getExplorerUrl } from "@/lib/format";
+import { isForumUrl } from "@/lib/forum";
 
 interface DetailRow {
   label: string;
@@ -12,7 +13,7 @@ interface ProposalDetailsProps {
   status: Status;
   proposer: string;
   payloadAddress?: string;
-  forumUrl?: string;
+  discussionUrl?: string;
   createdDate: string;
   votingEndsDate: string;
   executedDate?: string;
@@ -23,7 +24,7 @@ export function ProposalDetails({
   status,
   proposer,
   payloadAddress,
-  forumUrl,
+  discussionUrl,
   createdDate,
   votingEndsDate,
   executedDate,
@@ -39,9 +40,10 @@ export function ProposalDetails({
     rows.push({ label: "Payload", value: truncateAddress(payloadAddress), href: `${explorerUrl}/address/${payloadAddress}` });
   }
 
-  if (forumUrl) {
-    // forumUrl is always protocol-less (normalizeForumUrl / FORUM_URLS).
-    rows.push({ label: "Forum", value: forumUrl, href: `https://${forumUrl}` });
+  if (discussionUrl) {
+    // discussionUrl is always protocol-less (normalizeDiscussionUrl / FORUM_URLS).
+    const label = isForumUrl(discussionUrl) ? "Forum" : "Discussion";
+    rows.push({ label, value: discussionUrl, href: `https://${discussionUrl}` });
   }
 
   rows.push({ label: "Created", value: createdDate });

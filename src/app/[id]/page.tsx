@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import { fetchProposalByIdWithPower } from "@/lib/governance";
-import { buildProposalDetailView } from "@/lib/proposal-view";
+import { applyEnrichment, buildProposalDetailView } from "@/lib/proposal-view";
 import { buildKey } from "@/lib/query-keys";
 import { cachedFetch } from "@/lib/cache";
-import { enrichProposalView } from "@/lib/proposal-enrich";
+import { fetchProposalEnrichment } from "@/lib/proposal-enrich";
 import { ProposalDetailClient } from "./ProposalDetailClient";
 
 interface PageProps {
@@ -26,7 +26,12 @@ export default async function ProposalDetailPage({ params }: PageProps) {
 
   const initialData = buildProposalDetailView(proposal, totalPower, numericId);
 
-  await enrichProposalView(initialData, initialData.uri);
+  const enrichment = await fetchProposalEnrichment(
+    initialData.githubInfo,
+    initialData.uri,
+    numericId
+  );
+  if (enrichment) applyEnrichment(initialData, enrichment);
 
   return <ProposalDetailClient id={numericId} initialData={initialData} />;
 }

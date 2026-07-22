@@ -3,6 +3,7 @@ import { VoteBar } from "@/components/ui/VoteBar";
 import { QuorumBar } from "@/components/ui/QuorumBar";
 import { EtherscanLink } from "@/components/ui/EtherscanLink";
 import { useWallet } from "@/hooks/useWallet";
+import { isForumUrl } from "@/lib/forum";
 import { ProposalLifecycle } from "@/components/governance/ProposalLifecycle";
 import type { ProposalView } from "@/lib/types";
 
@@ -17,7 +18,7 @@ export function ProposalExpandedContent({ proposal, onVote, onDeposit }: Proposa
   const isActive = proposal.status === "Active";
   const isPending = proposal.status === "Pending";
   const { isConnected, connect } = useWallet();
-  const forumUrl = proposal.forumUrl;
+  const discussionUrl = proposal.discussionUrl;
 
   return (
     <div
@@ -79,9 +80,9 @@ export function ProposalExpandedContent({ proposal, onVote, onDeposit }: Proposa
               </a>
             )}
 
-            {forumUrl && (
+            {discussionUrl && (
               <a
-                href={`https://${forumUrl}`}
+                href={`https://${discussionUrl}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 hover:opacity-80"
@@ -102,7 +103,7 @@ export function ProposalExpandedContent({ proposal, onVote, onDeposit }: Proposa
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
                 <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  Forum Discussion
+                  {isForumUrl(discussionUrl) ? "Forum Discussion" : "Discussion"}
                 </span>
               </a>
             )}
