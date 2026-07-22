@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useRef } from "react";
 
-// Returns a stable [run, cancel] pair. `run` invokes the latest `callback`
-// only after `delay` ms pass without another call; `cancel` drops a pending
-// call (used when an external change should win). Cleans up on unmount.
+// Stable [run, cancel] pair: `run` fires the latest callback after `delay` ms
+// of quiet; `cancel` drops a pending call. Clears its timer on unmount.
 export function useDebouncedCallback<Args extends unknown[]>(
   callback: (...args: Args) => void,
   delay: number
